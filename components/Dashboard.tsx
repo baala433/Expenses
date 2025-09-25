@@ -1,17 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { ExpenseSummary, ModalType } from '../types';
 import SummaryCard from './SummaryCard';
 import { CreditIcon, DebitIcon, ExportIcon, ChevronDownIcon } from './Icons';
-
-interface DashboardProps {
-  summary: ExpenseSummary;
-  onCardClick: (type: ModalType) => void;
-  onExportXLSX: () => void;
-  onExportPDF: () => void;
-  onExportBreakdownXLSX: () => void;
-  onExportBreakdownPDF: () => void;
-}
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#AF19FF', '#FF1943', '#19D7FF'];
 
@@ -26,8 +16,8 @@ const CustomTooltip = ({ active, payload }: any) => {
   return null;
 };
 
-const Dashboard: React.FC<DashboardProps> = ({ summary, onCardClick, onExportXLSX, onExportPDF, onExportBreakdownXLSX, onExportBreakdownPDF }) => {
-  const chartData = summary.debitSummary.map(item => ({ name: item.category, value: item.totalAmount }));
+const Dashboard = ({ summary, onCardClick, onExportXLSX, onExportPDF, onExportBreakdownXLSX, onExportBreakdownPDF }: any) => {
+  const chartData = summary.debitSummary.map((item: any) => ({ name: item.category, value: item.totalAmount }));
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
   const exportMenuRef = useRef<HTMLDivElement>(null);
   const [isBreakdownExportMenuOpen, setIsBreakdownExportMenuOpen] = useState(false);
@@ -48,7 +38,7 @@ const Dashboard: React.FC<DashboardProps> = ({ summary, onCardClick, onExportXLS
     };
   }, []);
 
-  const ExportMenuItem: React.FC<{ onClick: () => void; children: React.ReactNode }> = ({ onClick, children }) => (
+  const ExportMenuItem = ({ onClick, children }: { onClick: () => void, children: React.ReactNode }) => (
       <button
         onClick={() => { onClick(); setIsExportMenuOpen(false); }}
         className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-600 flex items-center space-x-3"
@@ -88,14 +78,14 @@ const Dashboard: React.FC<DashboardProps> = ({ summary, onCardClick, onExportXLS
           title="Total Credit"
           amount={summary.totalCredit}
           icon={<CreditIcon />}
-          onClick={() => onCardClick(ModalType.CREDIT)}
+          onClick={() => onCardClick('credit')}
           color="green"
         />
         <SummaryCard
           title="Total Debit"
           amount={summary.totalDebit}
           icon={<DebitIcon />}
-          onClick={() => onCardClick(ModalType.DEBIT)}
+          onClick={() => onCardClick('debit')}
           color="red"
         />
       </div>
@@ -153,13 +143,14 @@ const Dashboard: React.FC<DashboardProps> = ({ summary, onCardClick, onExportXLS
                         <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                         ))}
                     </Pie>
-                    <Tooltip content={<CustomTooltip />} />
+                    {/* FIX: Pass the component function directly, not a JSX element instance. */}
+                    <Tooltip content={CustomTooltip} />
                     <Legend />
                     </PieChart>
                 </ResponsiveContainer>
             </div>
             <div className="space-y-3">
-              {summary.debitSummary.sort((a,b) => b.totalAmount - a.totalAmount).map((item, index) => (
+              {summary.debitSummary.sort((a: any,b: any) => b.totalAmount - a.totalAmount).map((item: any, index: number) => (
                 <div key={item.category} className="flex justify-between items-center p-3 rounded-lg bg-gray-50 dark:bg-gray-700/50">
                     <div className="flex items-center space-x-3">
                         <span className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS[index % COLORS.length] }}></span>

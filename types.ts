@@ -1,27 +1,9 @@
-export interface Transaction {
-  date: string;
-  description: string;
-  amount: number;
+// FIX: Add global declarations for third-party libraries included via script tags.
+declare global {
+  const XLSX: any;
+  interface Window {
+    jspdf: any;
+  }
 }
 
-export interface DebitTransaction extends Transaction {
-  category: string;
-}
-
-export interface CategorySummary {
-  category: string;
-  totalAmount: number;
-}
-
-export interface ExpenseSummary {
-  totalCredit: number;
-  totalDebit: number;
-  creditTransactions: Transaction[];
-  debitTransactions: DebitTransaction[];
-  debitSummary: CategorySummary[];
-}
-
-export enum ModalType {
-  CREDIT = 'credit',
-  DEBIT = 'debit',
-}
+export {};

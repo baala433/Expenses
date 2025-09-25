@@ -1,32 +1,15 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Transaction, DebitTransaction, ModalType } from '../types';
 import { EditIcon, SearchIcon, SortAscIcon, SortDescIcon, ExportIcon, ChevronDownIcon } from './Icons';
 
-declare const XLSX: any;
-declare const jspdf: any;
-
-interface TransactionModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  title: string;
-  transactions: (Transaction | DebitTransaction)[];
-  type: ModalType;
-  categories?: string[];
-  onUpdateCategory?: (transactionIndex: number, newCategory: string) => void;
-  onUpdateDescription?: (transactionIndex: number, newDescription: string) => void;
-}
-
-type SortKey = 'date' | 'description' | 'amount';
-
-const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onClose, title, transactions, type, categories, onUpdateCategory, onUpdateDescription }) => {
-  const [selectedCategory, setSelectedCategory] = useState<string>('All');
+const TransactionModal = ({ isOpen, onClose, title, transactions, type, categories, onUpdateCategory, onUpdateDescription }: any) => {
+  const [selectedCategory, setSelectedCategory] = useState('All');
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
-  const [editingDescription, setEditingDescription] = useState<string>('');
+  const [editingDescription, setEditingDescription] = useState('');
   
   const [searchTerm, setSearchTerm] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
-  const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'date', direction: 'desc' });
+  const [sortConfig, setSortConfig] = useState({ key: 'date', direction: 'desc' });
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
   const exportMenuRef = useRef<HTMLDivElement>(null);
 
@@ -82,14 +65,15 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onClose, ti
     setEditingIndex(null);
   };
   
-  const amountColorClass = type === ModalType.CREDIT ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400';
+  const amountColorClass = type === 'credit' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400';
 
   const uniqueCategories = useMemo(() => {
-    if (type !== ModalType.DEBIT || !categories) return [];
-    const all = new Set(categories);
-    transactions.forEach(tx => {
-      if ('category' in tx) {
-        all.add((tx as DebitTransaction).category);
+    if (type !== 'debit' || !categories) return [];
+    // FIX: Explicitly type the Set and check if the category is a string to ensure type safety.
+    const all = new Set<string>(categories);
+    transactions.forEach((tx: any) => {
+      if ('category' in tx && typeof tx.category === 'string') {
+        all.add(tx.category);
       }
     });
     return Array.from(all).sort();
@@ -105,9 +89,9 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onClose, ti
       filtered = filtered.filter(tx => tx.date <= endDate);
     }
 
-    if (type === ModalType.DEBIT) {
+    if (type === 'debit') {
       if (selectedCategory !== 'All') {
-        filtered = filtered.filter(tx => 'category' in tx && (tx as DebitTransaction).category === selectedCategory);
+        filtered = filtered.filter(tx => 'category' in tx && tx.category === selectedCategory);
       }
       if (searchTerm) {
         filtered = filtered.filter(tx => tx.description.toLowerCase().includes(searchTerm.toLowerCase()));
@@ -136,12 +120,12 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onClose, ti
 
   const handleExportViewCSV = () => {
     if (processedTransactions.length === 0) return;
-    const isDebit = type === ModalType.DEBIT;
+    const isDebit = type === 'debit';
     const headers = isDebit ? ['Date', 'Description', 'Amount', 'Category'] : ['Date', 'Description', 'Amount'];
     const rows = processedTransactions.map(tx => {
       const description = `"${tx.description.replace(/"/g, '""')}"`;
       const common = [tx.date, description, tx.amount];
-      return isDebit && 'category' in tx ? [...common, (tx as DebitTransaction).category].join(',') : common.join(',');
+      return isDebit && 'category' in tx ? [...common, tx.category].join(',') : common.join(',');
     });
     const csvContent = [headers.join(','), ...rows].join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -154,10 +138,11 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onClose, ti
 
   const handleExportViewXLSX = () => {
     if (processedTransactions.length === 0) return;
-    const isDebit = type === ModalType.DEBIT;
+    const isDebit = type === 'debit';
     const data = processedTransactions.map(tx => {
-        const row: any = { Date: tx.date, Description: tx.description, Amount: tx.amount };
-        if (isDebit && 'category' in tx) row.Category = (tx as DebitTransaction).category;
+        // FIX: Define `row` with an index signature to allow adding properties dynamically.
+        const row: { [key: string]: any } = { Date: tx.date, Description: tx.description, Amount: tx.amount };
+        if (isDebit && 'category' in tx) row.Category = tx.category;
         return row;
     });
     const worksheet = XLSX.utils.json_to_sheet(data, { origin: 'A2' });
@@ -185,14 +170,14 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onClose, ti
 
   const handleExportViewPDF = () => {
     if (processedTransactions.length === 0) return;
-    const { jsPDF } = (window as any).jspdf;
+    const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
-    const isDebit = type === ModalType.DEBIT;
+    const isDebit = type === 'debit';
     
     const tableHeaders = isDebit ? ['Date', 'Description', 'Amount', 'Category'] : ['Date', 'Description', 'Amount'];
     const tableBody = processedTransactions.map(tx => {
         const common = [tx.date, tx.description, tx.amount.toFixed(2)];
-        return isDebit && 'category' in tx ? [...common, (tx as DebitTransaction).category] : common;
+        return isDebit && 'category' in tx ? [...common, tx.category] : common;
     });
 
     doc.text(title, 14, 15);
@@ -202,15 +187,15 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onClose, ti
     doc.save(getFilename('transactions', 'pdf'));
   };
 
-  const groupTransactionsByCategory = (txs: DebitTransaction[]) => txs.reduce((acc, tx) => {
+  const groupTransactionsByCategory = (txs: any[]) => txs.reduce((acc, tx) => {
       const category = tx.category || 'Uncategorized';
       if (!acc[category]) acc[category] = [];
       acc[category].push(tx);
       return acc;
-  }, {} as Record<string, DebitTransaction[]>);
+  }, {} as { [key: string]: any[] });
 
   const handleExportCategoryXLSX = () => {
-    const debitTransactions = processedTransactions.filter(tx => 'category' in tx) as DebitTransaction[];
+    const debitTransactions = processedTransactions.filter(tx => 'category' in tx);
     if (debitTransactions.length === 0) return;
     
     const grouped = groupTransactionsByCategory(debitTransactions);
@@ -229,11 +214,11 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onClose, ti
   };
 
   const handleExportCategoryPDF = () => {
-    const debitTransactions = processedTransactions.filter(tx => 'category' in tx) as DebitTransaction[];
+    const debitTransactions = processedTransactions.filter(tx => 'category' in tx);
     if (debitTransactions.length === 0) return;
     
     const grouped = groupTransactionsByCategory(debitTransactions);
-    const { jsPDF } = (window as any).jspdf;
+    const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
     let startY = 20;
 
@@ -266,7 +251,7 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onClose, ti
     doc.save(getFilename('by-category', 'pdf'));
   };
 
-  const handleSort = (key: SortKey) => {
+  const handleSort = (key: string) => {
     setSortConfig(current => {
         if (current.key === key && current.direction === 'asc') {
             return { key, direction: 'desc' };
@@ -275,19 +260,19 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onClose, ti
     });
   };
 
-  const getSortIcon = (key: SortKey) => {
+  const getSortIcon = (key: string) => {
     if (sortConfig.key !== key) return null;
     return sortConfig.direction === 'asc' ? <SortAscIcon className="w-4 h-4" /> : <SortDescIcon className="w-4 h-4" />;
   };
 
-  const SortButton: React.FC<{ sortKey: SortKey, children: React.ReactNode }> = ({ sortKey, children }) => (
+  const SortButton = ({ sortKey, children }: { sortKey: string, children: React.ReactNode }) => (
     <button onClick={() => handleSort(sortKey)} className={`flex items-center space-x-1 px-3 py-1.5 rounded-md transition-colors text-sm ${sortConfig.key === sortKey ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'}`}>
         <span>{children}</span>
         {getSortIcon(sortKey)}
     </button>
   );
   
-  const ExportMenuItem: React.FC<{ onClick: () => void; children: React.ReactNode }> = ({ onClick, children }) => (
+  const ExportMenuItem = ({ onClick, children }: { onClick: () => void, children: React.ReactNode }) => (
       <button
         onClick={() => { onClick(); setIsExportMenuOpen(false); }}
         className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-600 flex items-center space-x-3"
@@ -324,7 +309,7 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onClose, ti
                         <ExportMenuItem onClick={handleExportViewCSV}><span>Export as CSV</span></ExportMenuItem>
                         <ExportMenuItem onClick={handleExportViewXLSX}><span>Export as Excel (.xlsx)</span></ExportMenuItem>
                         <ExportMenuItem onClick={handleExportViewPDF}><span>Export as PDF</span></ExportMenuItem>
-                        {type === ModalType.DEBIT && (
+                        {type === 'debit' && (
                           <>
                             <div className="border-t border-gray-200 dark:border-gray-600 my-1"></div>
                             <span className="block px-4 py-2 text-xs text-gray-400">Category Reports</span>
@@ -355,7 +340,7 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onClose, ti
                 </div>
 
                 {/* Debit-only Filters */}
-                {type === ModalType.DEBIT && (
+                {type === 'debit' && (
                     <>
                      <div className="flex flex-col">
                         <label htmlFor="categoryFilter" className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Category</label>
@@ -384,9 +369,9 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onClose, ti
           <ul className="space-y-3">
             {processedTransactions.length > 0 ? (
               processedTransactions.map((tx) => {
-                const originalIndex = transactions.findIndex(originalTx => originalTx === tx);
-                const isDebit = type === ModalType.DEBIT && 'category' in tx;
-                const debitTx = isDebit ? (tx as DebitTransaction) : null;
+                const originalIndex = transactions.findIndex((originalTx: any) => originalTx === tx);
+                const isDebit = type === 'debit' && 'category' in tx;
+                const debitTx = isDebit ? tx : null;
                 const isEditing = isDebit && editingIndex === originalIndex;
 
                 return (

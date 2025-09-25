@@ -1,13 +1,10 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { analyzeExpensePdf } from './services/geminiService';
-import { ExpenseSummary, ModalType, Transaction, DebitTransaction } from './types';
 import Dashboard from './components/Dashboard';
 import TransactionModal from './components/TransactionModal';
 import Spinner from './components/Spinner';
 import { FileIcon, LogoIcon } from './components/Icons';
-
-declare const XLSX: any;
-declare const jspdf: any;
+import Chatbot from './components/Chatbot';
 
 const CATEGORIES = ['Food & Dining', 'Transportation', 'Shopping', 'Utilities', 'Entertainment', 'Housing', 'Health', 'Other'];
 
@@ -21,17 +18,22 @@ const LOADING_MESSAGES = [
   "Finalizing your financial breakdown...",
 ];
 
+const ModalType = {
+  CREDIT: 'credit',
+  DEBIT: 'debit',
+};
+
 function App() {
-  const [summary, setSummary] = useState<ExpenseSummary | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [error, setError] = useState<{ message: string; retryable?: boolean } | null>(null);
-  const [modal, setModal] = useState<{ type: ModalType; transactions: (Transaction | DebitTransaction)[] } | null>(null);
-  const [fileName, setFileName] = useState<string>('');
+  const [summary, setSummary] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [modal, setModal] = useState(null);
+  const [fileName, setFileName] = useState('');
   const [lastFile, setLastFile] = useState<File | null>(null);
-  const [loadingMessage, setLoadingMessage] = useState<string>(LOADING_MESSAGES[0]);
+  const [loadingMessage, setLoadingMessage] = useState(LOADING_MESSAGES[0]);
 
   useEffect(() => {
-    let interval: number | undefined;
+    let interval: number;
     if (isLoading) {
       let messageIndex = 0;
       setLoadingMessage(LOADING_MESSAGES[0]); // Reset to first message
@@ -85,7 +87,7 @@ function App() {
     }
   };
 
-  const openModal = (type: ModalType) => {
+  const openModal = (type: 'credit' | 'debit') => {
     if (!summary) return;
     const transactions = type === ModalType.CREDIT ? summary.creditTransactions : summary.debitTransactions;
     setModal({ type, transactions });
@@ -101,6 +103,7 @@ function App() {
     setIsLoading(false);
     setFileName('');
     setLastFile(null);
+    // FIX: Cast element to HTMLInputElement to access value property.
     const fileInput = document.getElementById('file-upload') as HTMLInputElement;
     if (fileInput) {
         fileInput.value = '';
@@ -110,7 +113,7 @@ function App() {
   const handleUpdateCategory = (transactionIndex: number, newCategory: string) => {
     if (!summary) return;
 
-    const newSummary = JSON.parse(JSON.stringify(summary)) as ExpenseSummary;
+    const newSummary = JSON.parse(JSON.stringify(summary));
     const transaction = newSummary.debitTransactions[transactionIndex];
     if (!transaction) return;
 
@@ -121,13 +124,13 @@ function App() {
 
     transaction.category = newCategory;
 
-    const oldCategorySummary = newSummary.debitSummary.find(s => s.category === oldCategory);
+    const oldCategorySummary = newSummary.debitSummary.find((s: any) => s.category === oldCategory);
     if (oldCategorySummary) {
       oldCategorySummary.totalAmount -= transactionAmount;
     }
-    newSummary.debitSummary = newSummary.debitSummary.filter(s => s.totalAmount > 0.01);
+    newSummary.debitSummary = newSummary.debitSummary.filter((s: any) => s.totalAmount > 0.01);
 
-    const newCategorySummary = newSummary.debitSummary.find(s => s.category === newCategory);
+    const newCategorySummary = newSummary.debitSummary.find((s: any) => s.category === newCategory);
     if (newCategorySummary) {
       newCategorySummary.totalAmount += transactionAmount;
     } else {
@@ -145,7 +148,7 @@ function App() {
   const handleUpdateDescription = (transactionIndex: number, newDescription: string) => {
     if (!summary || !newDescription) return;
 
-    const newSummary = JSON.parse(JSON.stringify(summary)) as ExpenseSummary;
+    const newSummary = JSON.parse(JSON.stringify(summary));
     const transaction = newSummary.debitTransactions[transactionIndex];
     if (!transaction || transaction.description === newDescription) return;
     
@@ -165,7 +168,7 @@ function App() {
       const workbook = XLSX.utils.book_new();
 
       // Credit Sheet
-      const creditData = summary.creditTransactions.map(tx => ({
+      const creditData = summary.creditTransactions.map((tx: any) => ({
         Date: tx.date,
         Description: tx.description,
         Amount: tx.amount
@@ -175,7 +178,7 @@ function App() {
       XLSX.utils.book_append_sheet(workbook, creditSheet, "Credit Transactions");
 
       // Debit Sheet
-      const debitData = summary.debitTransactions.map(tx => ({
+      const debitData = summary.debitTransactions.map((tx: any) => ({
         Date: tx.date,
         Description: tx.description,
         Amount: tx.amount,
@@ -191,13 +194,13 @@ function App() {
   const handleExportAllPDF = () => {
       if (!summary) return;
 
-      const { jsPDF } = (window as any).jspdf;
+      const { jsPDF } = window.jspdf;
       const doc = new jsPDF();
       
       doc.text("Full Financial Report", 14, 15);
 
       // Credit Transactions Table
-      const creditBody = summary.creditTransactions.map(tx => [tx.date, tx.description, tx.amount.toFixed(2)]);
+      const creditBody = summary.creditTransactions.map((tx: any) => [tx.date, tx.description, tx.amount.toFixed(2)]);
       (doc as any).autoTable({
           head: [['Credit Transactions']],
           startY: 25,
@@ -212,7 +215,7 @@ function App() {
       });
 
       // Debit Transactions Table
-      const debitBody = summary.debitTransactions.map(tx => [tx.date, tx.description, tx.amount.toFixed(2), tx.category]);
+      const debitBody = summary.debitTransactions.map((tx: any) => [tx.date, tx.description, tx.amount.toFixed(2), tx.category]);
       (doc as any).autoTable({
           head: [['Debit Transactions']],
           startY: (doc as any).autoTable.previous.finalY + 10,
@@ -227,7 +230,7 @@ function App() {
       });
 
       // Add watermark
-      const totalPages = (doc as any).internal.getNumberOfPages();
+      const totalPages = doc.internal.getNumberOfPages();
       for (let i = 1; i <= totalPages; i++) {
         doc.setPage(i);
         doc.setFontSize(50);
@@ -248,7 +251,7 @@ function App() {
     if (!summary?.debitSummary) return;
     const workbook = XLSX.utils.book_new();
 
-    const breakdownData = summary.debitSummary.map(item => ({
+    const breakdownData = summary.debitSummary.map((item: any) => ({
       Category: item.category,
       'Total Amount': item.totalAmount
     }));
@@ -263,12 +266,12 @@ function App() {
   const handleExportBreakdownPDF = () => {
       if (!summary?.debitSummary) return;
 
-      const { jsPDF } = (window as any).jspdf;
+      const { jsPDF } = window.jspdf;
       const doc = new jsPDF();
       
       doc.text("Expense Breakdown by Category", 14, 15);
 
-      const body = summary.debitSummary.map(item => [item.category, new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(item.totalAmount)]);
+      const body = summary.debitSummary.map((item: any) => [item.category, new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(item.totalAmount)]);
       
       (doc as any).autoTable({
           head: [['Category', 'Total Amount']],
@@ -277,7 +280,7 @@ function App() {
           theme: 'grid',
       });
       
-      const totalPages = (doc as any).internal.getNumberOfPages();
+      const totalPages = doc.internal.getNumberOfPages();
       for (let i = 1; i <= totalPages; i++) {
         doc.setPage(i);
         doc.setFontSize(50);
@@ -381,6 +384,7 @@ function App() {
           onUpdateDescription={handleUpdateDescription}
         />
       )}
+      <Chatbot />
     </div>
   );
 }

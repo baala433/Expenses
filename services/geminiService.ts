@@ -1,9 +1,10 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { ExpenseSummary, DebitTransaction } from '../types';
 
+// FIX: Added File type for `file` argument, and specified Promise return type as string.
 const fileToGenerativePart = async (file: File) => {
   const base64EncodedDataPromise = new Promise<string>((resolve) => {
     const reader = new FileReader();
+    // FIX: Cast reader.result to string as readAsDataURL returns a string.
     reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
     reader.readAsDataURL(file);
   });
@@ -13,8 +14,9 @@ const fileToGenerativePart = async (file: File) => {
 };
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+let chat = null;
 
-export const analyzeExpensePdf = async (pdfFile: File): Promise<ExpenseSummary> => {
+export const analyzeExpensePdf = async (pdfFile: File) => {
   if (!process.env.API_KEY) {
     throw new Error("API_KEY environment variable is not set.");
   }
@@ -84,7 +86,6 @@ export const analyzeExpensePdf = async (pdfFile: File): Promise<ExpenseSummary> 
           },
           required: ["totalCredit", "totalDebit", "creditTransactions", "debitTransactions", "debitSummary"],
         },
-        thinkingConfig: { thinkingBudget: 0 },
       },
     });
 
@@ -93,15 +94,47 @@ export const analyzeExpensePdf = async (pdfFile: File): Promise<ExpenseSummary> 
 
     // Ensure debit amounts are positive for calculation/display consistency
     parsedJson.totalDebit = Math.abs(parsedJson.totalDebit);
-    parsedJson.debitTransactions = parsedJson.debitTransactions.map((tx: DebitTransaction) => ({ ...tx, amount: Math.abs(tx.amount) }));
-    parsedJson.debitSummary = parsedJson.debitSummary.map((cat: {totalAmount: number}) => ({ ...cat, totalAmount: Math.abs(cat.totalAmount) }));
+    parsedJson.debitTransactions = parsedJson.debitTransactions.map((tx) => ({ ...tx, amount: Math.abs(tx.amount) }));
+    parsedJson.debitSummary = parsedJson.debitSummary.map((cat) => ({ ...cat, totalAmount: Math.abs(cat.totalAmount) }));
 
-    return parsedJson as ExpenseSummary;
+    return parsedJson;
   } catch (error) {
     console.error("Error analyzing PDF with Gemini API:", error);
     if (error instanceof Error && error.message.includes('json')) {
          throw new Error("Failed to analyze the document. The AI model returned an unexpected format. Please try another document.");
     }
     throw new Error("Failed to analyze the document. This could be a network issue or the PDF is not a valid bank statement.");
+  }
+};
+
+const getChatSession = () => {
+  if (chat) {
+    return chat;
+  }
+  
+  if (!process.env.API_KEY) {
+    throw new Error("API_KEY environment variable is not set.");
+  }
+
+  const systemInstruction = `You are 'BBaala Assistant', a friendly and helpful guide for the 'BBaala Expense Analyser' web application. Your purpose is to answer user questions about how to use the website. The website allows users to upload a PDF bank statement. It then uses AI to analyze the statement and displays a dashboard with total credit, total debit, and a pie chart breakdown of expenses by category (like Food, Shopping, etc.). Users can view detailed transaction lists, edit categories and descriptions, and export all data to PDF or Excel formats. Keep your answers concise and focused on the website's features. When asked how to use the site, give a simple step-by-step guide.`;
+
+  chat = ai.chats.create({
+    model: 'gemini-2.5-flash',
+    config: {
+      systemInstruction: systemInstruction,
+    },
+  });
+  return chat;
+}
+
+export const sendMessage = async (message) => {
+  try {
+    const chatSession = getChatSession();
+    const response = await chatSession.sendMessage({ message });
+    return response.text;
+  } catch (error) {
+    console.error("Error sending message to Gemini API:", error);
+    chat = null; // Reset chat on error
+    return "Sorry, I encountered an error. Please try again.";
   }
 };

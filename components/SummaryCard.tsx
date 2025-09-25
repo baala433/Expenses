@@ -1,15 +1,7 @@
 
 import React from 'react';
 
-interface SummaryCardProps {
-  title: string;
-  amount: number;
-  icon: React.ReactNode;
-  onClick: () => void;
-  color: 'green' | 'red';
-}
-
-const SummaryCard: React.FC<SummaryCardProps> = ({ title, amount, icon, onClick, color }) => {
+const SummaryCard = ({ title, amount, icon, onClick, color }) => {
   const colorClasses = {
     green: 'from-green-500 to-emerald-600 text-green-100',
     red: 'from-red-500 to-rose-600 text-red-100',
