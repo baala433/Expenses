@@ -1,12 +1,20 @@
-import React, { useState, useCallback } from 'react';
-import { analyzeExpensePdf } from 'services/geminiService';
+import React, { useState, useCallback, useEffect } from 'react';
+import { analyzeExpensePdf } from './services/geminiService';
 import { ExpenseSummary, ModalType, Transaction, DebitTransaction } from './types';
-import Dashboard from 'components/Dashboard';
-import TransactionModal from 'components/TransactionModal';
-import Spinner from 'components/Spinner';
-import { FileIcon, LogoIcon } from 'components/Icons';
+import Dashboard from './components/Dashboard';
+import TransactionModal from './components/TransactionModal';
+import Spinner from './components/Spinner';
+import { FileIcon, LogoIcon } from './components/Icons';
 
 const CATEGORIES = ['Food & Dining', 'Transportation', 'Shopping', 'Utilities', 'Entertainment', 'Housing', 'Health', 'Other'];
+
+const LOADING_MESSAGES = [
+  "Processing your document...",
+  "Extracting transactions from the PDF...",
+  "Categorizing your expenses with Gemini...",
+  "Building your financial dashboard...",
+  "Almost there, finalizing the results...",
+];
 
 function App() {
   const [summary, setSummary] = useState<ExpenseSummary | null>(null);
@@ -15,6 +23,24 @@ function App() {
   const [modal, setModal] = useState<{ type: ModalType; transactions: (Transaction | DebitTransaction)[] } | null>(null);
   const [fileName, setFileName] = useState<string>('');
   const [lastFile, setLastFile] = useState<File | null>(null);
+  const [loadingMessage, setLoadingMessage] = useState<string>(LOADING_MESSAGES[0]);
+
+  useEffect(() => {
+    let interval: number | undefined;
+    if (isLoading) {
+      let messageIndex = 0;
+      setLoadingMessage(LOADING_MESSAGES[0]); // Reset to first message
+      interval = window.setInterval(() => {
+        messageIndex = (messageIndex + 1) % LOADING_MESSAGES.length;
+        setLoadingMessage(LOADING_MESSAGES[messageIndex]);
+      }, 2500);
+    }
+    return () => {
+      if (interval) {
+        clearInterval(interval);
+      }
+    };
+  }, [isLoading]);
 
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -169,7 +195,7 @@ function App() {
         {isLoading && (
           <div className="text-center py-16">
             <Spinner />
-            <p className="mt-4 text-lg font-medium text-gray-600 dark:text-gray-300">Analyzing your document...</p>
+            <p className="mt-4 text-lg font-medium text-gray-600 dark:text-gray-300">{loadingMessage}</p>
             <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">{fileName}</p>
           </div>
         )}
