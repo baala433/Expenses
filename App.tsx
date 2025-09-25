@@ -1,10 +1,11 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { analyzeExpensePdf } from './services/geminiService';
+import { analyzeExpensePdf, askFinancialCopilot, DocumentAnalysisError, NetworkError, ApiKeyError } from './services/geminiService';
 import Dashboard from './components/Dashboard';
 import TransactionModal from './components/TransactionModal';
 import Spinner from './components/Spinner';
 import { FileIcon, LogoIcon } from './components/Icons';
 import Chatbot from './components/Chatbot';
+import FinancialCopilot from './components/FinancialCopilot';
 
 const CATEGORIES = ['Food & Dining', 'Transportation', 'Shopping', 'Utilities', 'Entertainment', 'Housing', 'Health', 'Other'];
 
@@ -32,6 +33,10 @@ function App() {
   const [lastFile, setLastFile] = useState<File | null>(null);
   const [loadingMessage, setLoadingMessage] = useState(LOADING_MESSAGES[0]);
 
+  // State for Financial Copilot
+  const [copilotMessages, setCopilotMessages] = useState([]);
+  const [isCopilotLoading, setIsCopilotLoading] = useState(false);
+
   useEffect(() => {
     let interval: number;
     if (isLoading) {
@@ -48,12 +53,25 @@ function App() {
       }
     };
   }, [isLoading]);
+  
+  useEffect(() => {
+    if (summary) {
+      setCopilotMessages([
+        {
+          sender: 'ai',
+          text: "Welcome to your Financial Copilot! I've analyzed your statement. Ask me anything, like 'What's my largest expense?' or 'Summarize my spending on Shopping'."
+        }
+      ]);
+    } else {
+      setCopilotMessages([]);
+    }
+  }, [summary]);
 
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
       if (file.type !== 'application/pdf') {
-        setError({ message: 'Please upload a valid PDF file.' });
+        setError({ message: 'Please upload a valid PDF file.', retryable: false });
         return;
       }
       setFileName(file.name);
@@ -71,7 +89,13 @@ function App() {
       const result = await analyzeExpensePdf(file);
       setSummary(result);
     } catch (err) {
-      if (err instanceof Error) {
+      // Differentiate between retryable and non-retryable errors.
+      if (err instanceof NetworkError) {
+        setError({ message: err.message, retryable: true });
+      } else if (err instanceof DocumentAnalysisError || err instanceof ApiKeyError) {
+        setError({ message: err.message, retryable: false });
+      } else if (err instanceof Error) {
+        // Fallback for other generic errors to be retryable
         setError({ message: err.message, retryable: true });
       } else {
         setError({ message: 'An unknown error occurred.', retryable: true });
@@ -103,6 +127,7 @@ function App() {
     setIsLoading(false);
     setFileName('');
     setLastFile(null);
+    setCopilotMessages([]); // Reset copilot
     // FIX: Cast element to HTMLInputElement to access value property.
     const fileInput = document.getElementById('file-upload') as HTMLInputElement;
     if (fileInput) {
@@ -297,6 +322,25 @@ function App() {
       doc.save(getFilename('expense-breakdown', 'pdf'));
   };
 
+  const handleCopilotSendMessage = async (message: string) => {
+    if (!message.trim() || isCopilotLoading || !summary) return;
+
+    const newUserMessage = { text: message, sender: 'user' };
+    setCopilotMessages(prev => [...prev, newUserMessage]);
+    setIsCopilotLoading(true);
+
+    try {
+      const aiResponse = await askFinancialCopilot(message, summary);
+      const newAiMessage = { text: aiResponse, sender: 'ai' };
+      setCopilotMessages(prev => [...prev, newAiMessage]);
+    } catch (err) {
+      const errorMessage = { text: "Sorry, I'm having trouble connecting. Please try again.", sender: 'ai' };
+      setCopilotMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setIsCopilotLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 font-sans">
       <header className="bg-white dark:bg-gray-800/50 shadow-sm">
@@ -361,14 +405,21 @@ function App() {
         )}
 
         {summary && !isLoading && (
-          <Dashboard 
-            summary={summary} 
-            onCardClick={openModal} 
-            onExportXLSX={handleExportAllXLSX}
-            onExportPDF={handleExportAllPDF}
-            onExportBreakdownXLSX={handleExportBreakdownXLSX}
-            onExportBreakdownPDF={handleExportBreakdownPDF}
-          />
+          <>
+            <Dashboard 
+              summary={summary} 
+              onCardClick={openModal} 
+              onExportXLSX={handleExportAllXLSX}
+              onExportPDF={handleExportAllPDF}
+              onExportBreakdownXLSX={handleExportBreakdownXLSX}
+              onExportBreakdownPDF={handleExportBreakdownPDF}
+            />
+            <FinancialCopilot
+              messages={copilotMessages}
+              onSendMessage={handleCopilotSendMessage}
+              isLoading={isCopilotLoading}
+            />
+          </>
         )}
       </main>
       

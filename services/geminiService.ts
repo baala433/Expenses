@@ -1,5 +1,25 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
+// NEW: Custom error classes for more specific error handling.
+export class DocumentAnalysisError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'DocumentAnalysisError';
+  }
+}
+export class NetworkError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'NetworkError';
+  }
+}
+export class ApiKeyError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ApiKeyError';
+  }
+}
+
 // FIX: Added File type for `file` argument, and specified Promise return type as string.
 const fileToGenerativePart = async (file: File) => {
   const base64EncodedDataPromise = new Promise<string>((resolve) => {
@@ -15,11 +35,17 @@ const fileToGenerativePart = async (file: File) => {
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 let chat = null;
+let financialChat = null;
+let currentSummary = null;
 
 export const analyzeExpensePdf = async (pdfFile: File) => {
   if (!process.env.API_KEY) {
-    throw new Error("API_KEY environment variable is not set.");
+    throw new ApiKeyError("API_KEY environment variable is not set. Please configure it before retrying.");
   }
+
+  // Reset financial chat when a new PDF is analyzed
+  financialChat = null;
+  currentSummary = null;
 
   const model = 'gemini-2.5-flash';
   const pdfPart = await fileToGenerativePart(pdfFile);
@@ -100,10 +126,83 @@ export const analyzeExpensePdf = async (pdfFile: File) => {
     return parsedJson;
   } catch (error) {
     console.error("Error analyzing PDF with Gemini API:", error);
-    if (error instanceof Error && error.message.includes('json')) {
-         throw new Error("Failed to analyze the document. The AI model returned an unexpected format. Please try another document.");
+    // If parsing fails, it's likely an issue with the document format, which is not retryable.
+    if (error instanceof Error && (error.message.includes('json') || error.message.includes('parse'))) {
+         throw new DocumentAnalysisError("The AI model returned an unexpected format. This can happen if the document isn't a supported bank statement. Please try another file.");
     }
-    throw new Error("Failed to analyze the document. This could be a network issue or the PDF is not a valid bank statement.");
+    // Most other errors are likely transient network or API issues, which are retryable.
+    throw new NetworkError("Failed to analyze the document due to a network or API issue. Please check your connection and try again.");
+  }
+};
+
+export const generateQuickSummary = async (debitSummary: any[]) => {
+  if (!process.env.API_KEY) {
+    throw new Error("API_KEY environment variable is not set.");
+  }
+  if (!debitSummary || debitSummary.length === 0) {
+    return "No debit summary available to analyze.";
+  }
+
+  const model = 'gemini-2.5-flash';
+  const prompt = `
+    You are a helpful financial assistant. Based on the following JSON data of categorized expenses, provide a concise and insightful summary of spending habits for a user.
+    
+    Your summary should:
+    1. Be friendly and encouraging.
+    2. Start with a general observation about the spending.
+    3. Clearly state the highest spending category and its amount.
+    4. Mention one or two other significant spending categories.
+    5. Be brief, around 3-4 sentences.
+    6. Format the output with paragraphs. Do not use markdown like headers or lists.
+
+    Expense Data:
+    ${JSON.stringify(debitSummary)}
+  `;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: model,
+      contents: prompt,
+    });
+    return response.text;
+  } catch (error) {
+    console.error("Error generating quick summary with Gemini API:", error);
+    throw new NetworkError("Failed to generate summary due to a network or API issue. Please try again.");
+  }
+};
+
+export const generateCategorySummary = async (categoryName: string, transactions: any[]) => {
+  if (!process.env.API_KEY) {
+    throw new Error("API_KEY environment variable is not set.");
+  }
+  if (!transactions || transactions.length === 0) {
+    return `No transactions found for the ${categoryName} category.`;
+  }
+
+  const model = 'gemini-2.5-flash';
+  const prompt = `
+    You are a helpful financial assistant. Analyze the following expense transactions within the "${categoryName}" category.
+
+    Your summary should be:
+    1. Concise and insightful, around 2-3 sentences.
+    2. Mention the total number of transactions.
+    3. Highlight the largest single expense in this category if it's significant.
+    4. Provide a brief observation about the spending pattern (e.g., frequent small purchases, a few large ones).
+    5. Do not use markdown like headers or lists.
+
+    Transaction Data:
+    ${JSON.stringify(transactions.map(tx => ({ date: tx.date, description: tx.description, amount: tx.amount })))}
+  `;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: model,
+      contents: prompt,
+    });
+    return response.text;
+  } catch (error) {
+    console.error(`Error generating summary for ${categoryName}:`, error);
+    throw new NetworkError(`Failed to generate summary for ${categoryName} due to a network or API issue. Please try again.`);
   }
 };
 
@@ -136,5 +235,40 @@ export const sendMessage = async (message) => {
     console.error("Error sending message to Gemini API:", error);
     chat = null; // Reset chat on error
     return "Sorry, I encountered an error. Please try again.";
+  }
+};
+
+const getFinancialCopilotSession = (summary) => {
+  if (financialChat && currentSummary === summary) {
+    return financialChat;
+  }
+
+  if (!process.env.API_KEY) {
+    throw new Error("API_KEY environment variable is not set.");
+  }
+  
+  currentSummary = summary;
+  const systemInstruction = `You are a financial copilot. The user has provided their financial summary in JSON format. Your task is to answer questions based ONLY on this data. Do not make up information. Be helpful and provide insights, calculations, and summaries as requested. Here is the user's financial data: ${JSON.stringify(summary)}`;
+
+  financialChat = ai.chats.create({
+    model: 'gemini-2.5-flash',
+    config: {
+      systemInstruction,
+    },
+  });
+
+  return financialChat;
+}
+
+export const askFinancialCopilot = async (message, summary) => {
+  try {
+    const chatSession = getFinancialCopilotSession(summary);
+    const response = await chatSession.sendMessage({ message });
+    return response.text;
+  } catch (error) {
+    console.error("Error with Financial Copilot:", error);
+    financialChat = null; // Reset chat on error
+    currentSummary = null;
+    return "Sorry, I encountered an error. Please try asking your question again.";
   }
 };

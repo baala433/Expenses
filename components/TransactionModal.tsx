@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { EditIcon, SearchIcon, SortAscIcon, SortDescIcon, ExportIcon, ChevronDownIcon } from './Icons';
 
@@ -16,6 +17,7 @@ const TransactionModal = ({ isOpen, onClose, title, transactions, type, categori
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
+      // FIX: Corrected typo from `exportMenu-ref` to `exportMenuRef`.
       if (exportMenuRef.current && !exportMenuRef.current.contains(event.target as Node)) {
         setIsExportMenuOpen(false);
       }
@@ -194,6 +196,37 @@ const TransactionModal = ({ isOpen, onClose, title, transactions, type, categori
       return acc;
   }, {} as { [key: string]: any[] });
 
+  const handleExportCategoryCSV = () => {
+    const debitTransactions = processedTransactions.filter(tx => 'category' in tx);
+    if (debitTransactions.length === 0) return;
+
+    // Sort by category, then by date as a secondary sort
+    debitTransactions.sort((a, b) => {
+        const categoryA = a.category || 'Uncategorized';
+        const categoryB = b.category || 'Uncategorized';
+        if (categoryA < categoryB) return -1;
+        if (categoryA > categoryB) return 1;
+        if (a.date < b.date) return -1;
+        if (a.date > b.date) return 1;
+        return 0;
+    });
+
+    const headers = ['Category', 'Date', 'Description', 'Amount'];
+    const rows = debitTransactions.map(tx => {
+      // Ensure description is properly quoted for CSV
+      const description = `"${(tx.description || '').replace(/"/g, '""')}"`;
+      return [tx.category || 'Uncategorized', tx.date, description, tx.amount].join(',');
+    });
+
+    const csvContent = [headers.join(','), ...rows].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = getFilename('by-category', 'csv');
+    link.click();
+    URL.revokeObjectURL(link.href);
+  };
+
   const handleExportCategoryXLSX = () => {
     const debitTransactions = processedTransactions.filter(tx => 'category' in tx);
     if (debitTransactions.length === 0) return;
@@ -313,6 +346,7 @@ const TransactionModal = ({ isOpen, onClose, title, transactions, type, categori
                           <>
                             <div className="border-t border-gray-200 dark:border-gray-600 my-1"></div>
                             <span className="block px-4 py-2 text-xs text-gray-400">Category Reports</span>
+                            <ExportMenuItem onClick={handleExportCategoryCSV}><span>Export by Category (CSV)</span></ExportMenuItem>
                             <ExportMenuItem onClick={handleExportCategoryXLSX}><span>Export by Category (Excel)</span></ExportMenuItem>
                             <ExportMenuItem onClick={handleExportCategoryPDF}><span>Export by Category (PDF)</span></ExportMenuItem>
                           </>
@@ -366,16 +400,17 @@ const TransactionModal = ({ isOpen, onClose, title, transactions, type, categori
         </div>
 
         <div className="overflow-y-auto p-4 sm:p-6">
-          <ul className="space-y-3">
+          <ul className="border-t border-gray-200 dark:border-gray-600">
             {processedTransactions.length > 0 ? (
-              processedTransactions.map((tx) => {
+              processedTransactions.map((tx, index) => {
                 const originalIndex = transactions.findIndex((originalTx: any) => originalTx === tx);
                 const isDebit = type === 'debit' && 'category' in tx;
                 const debitTx = isDebit ? tx : null;
                 const isEditing = isDebit && editingIndex === originalIndex;
+                const rowClass = index % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50 dark:bg-gray-700/50';
 
                 return (
-                  <li key={originalIndex} className="flex flex-col sm:flex-row justify-between items-start sm:items-center p-3 rounded-lg bg-gray-50 dark:bg-gray-700/50 hover:bg-gray-100 dark:hover:bg-gray-700 transition group">
+                  <li key={originalIndex} className={`${rowClass} flex flex-col sm:flex-row justify-between items-start sm:items-center p-3 hover:bg-blue-50 dark:hover:bg-gray-700 transition-colors group border-b border-gray-200 dark:border-gray-600`}>
                     <div className="flex-1 pr-4 w-full mb-2 sm:mb-0">
                        <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">{tx.date}</div>
                        {isEditing ? (
