@@ -9,6 +9,8 @@ interface DashboardProps {
   onCardClick: (type: ModalType) => void;
   onExportXLSX: () => void;
   onExportPDF: () => void;
+  onExportBreakdownXLSX: () => void;
+  onExportBreakdownPDF: () => void;
 }
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#AF19FF', '#FF1943', '#19D7FF'];
@@ -24,15 +26,20 @@ const CustomTooltip = ({ active, payload }: any) => {
   return null;
 };
 
-const Dashboard: React.FC<DashboardProps> = ({ summary, onCardClick, onExportXLSX, onExportPDF }) => {
+const Dashboard: React.FC<DashboardProps> = ({ summary, onCardClick, onExportXLSX, onExportPDF, onExportBreakdownXLSX, onExportBreakdownPDF }) => {
   const chartData = summary.debitSummary.map(item => ({ name: item.category, value: item.totalAmount }));
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
   const exportMenuRef = useRef<HTMLDivElement>(null);
+  const [isBreakdownExportMenuOpen, setIsBreakdownExportMenuOpen] = useState(false);
+  const breakdownExportMenuRef = useRef<HTMLDivElement>(null);
   
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (exportMenuRef.current && !exportMenuRef.current.contains(event.target as Node)) {
         setIsExportMenuOpen(false);
+      }
+      if (breakdownExportMenuRef.current && !breakdownExportMenuRef.current.contains(event.target as Node)) {
+        setIsBreakdownExportMenuOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -94,7 +101,40 @@ const Dashboard: React.FC<DashboardProps> = ({ summary, onCardClick, onExportXLS
       </div>
 
       <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg hover:shadow-2xl transition-shadow duration-300">
-        <h3 className="text-xl font-bold text-gray-800 dark:text-white mb-4">Expense Breakdown</h3>
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-xl font-bold text-gray-800 dark:text-white">Expense Breakdown</h3>
+           <div className="relative" ref={breakdownExportMenuRef}>
+              <button
+                  onClick={() => setIsBreakdownExportMenuOpen(prev => !prev)}
+                  className="flex items-center space-x-2 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors shadow-sm"
+                  aria-label="Export breakdown options"
+              >
+                  <ExportIcon className="w-4 h-4" />
+                  <span>Export</span>
+                  <ChevronDownIcon className="w-4 h-4"/>
+              </button>
+              {isBreakdownExportMenuOpen && (
+                  <div className="absolute right-0 mt-2 w-56 origin-top-right bg-white dark:bg-gray-700 rounded-md shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none z-10" role="menu" aria-orientation="vertical">
+                      <div className="py-1">
+                          <button
+                            onClick={() => { onExportBreakdownXLSX(); setIsBreakdownExportMenuOpen(false); }}
+                            className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-600 flex items-center space-x-3"
+                            role="menuitem"
+                          >
+                            <span>Export as Excel (.xlsx)</span>
+                          </button>
+                           <button
+                            onClick={() => { onExportBreakdownPDF(); setIsBreakdownExportMenuOpen(false); }}
+                            className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-600 flex items-center space-x-3"
+                            role="menuitem"
+                          >
+                            <span>Export as PDF</span>
+                          </button>
+                      </div>
+                  </div>
+              )}
+          </div>
+        </div>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
             <div className="h-80">
                  <ResponsiveContainer width="100%" height="100%">
