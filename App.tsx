@@ -1,10 +1,10 @@
 import React, { useState, useCallback } from 'react';
-import { analyzeExpensePdf } from './services/geminiService';
+import { analyzeExpensePdf } from 'services/geminiService';
 import { ExpenseSummary, ModalType, Transaction, DebitTransaction } from './types';
-import Dashboard from './components/Dashboard';
-import TransactionModal from './components/TransactionModal';
-import Spinner from './components/Spinner';
-import { FileIcon, LogoIcon } from './components/Icons';
+import Dashboard from 'components/Dashboard';
+import TransactionModal from 'components/TransactionModal';
+import Spinner from 'components/Spinner';
+import { FileIcon, LogoIcon } from 'components/Icons';
 
 const CATEGORIES = ['Food & Dining', 'Transportation', 'Shopping', 'Utilities', 'Entertainment', 'Housing', 'Health', 'Other'];
 
