@@ -9,11 +9,13 @@ import { FileIcon, LogoIcon } from './components/Icons';
 const CATEGORIES = ['Food & Dining', 'Transportation', 'Shopping', 'Utilities', 'Entertainment', 'Housing', 'Health', 'Other'];
 
 const LOADING_MESSAGES = [
-  "Processing your document...",
-  "Extracting transactions from the PDF...",
-  "Categorizing your expenses with Gemini...",
-  "Building your financial dashboard...",
-  "Almost there, finalizing the results...",
+  "Initializing secure analysis...",
+  "Parsing PDF structure...",
+  "Extracting transactional data points...",
+  "Applying Gemini AI for expense categorization...",
+  "Aggregating financial summary...",
+  "Constructing interactive dashboard...",
+  "Finalizing your financial breakdown...",
 ];
 
 function App() {
@@ -33,7 +35,7 @@ function App() {
       interval = window.setInterval(() => {
         messageIndex = (messageIndex + 1) % LOADING_MESSAGES.length;
         setLoadingMessage(LOADING_MESSAGES[messageIndex]);
-      }, 2500);
+      }, 2000);
     }
     return () => {
       if (interval) {
