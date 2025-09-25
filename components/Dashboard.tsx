@@ -1,13 +1,14 @@
-
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { ExpenseSummary, ModalType } from '../types';
 import SummaryCard from './SummaryCard';
-import { CreditIcon, DebitIcon } from './Icons';
+import { CreditIcon, DebitIcon, ExportIcon, ChevronDownIcon } from './Icons';
 
 interface DashboardProps {
   summary: ExpenseSummary;
   onCardClick: (type: ModalType) => void;
+  onExportXLSX: () => void;
+  onExportPDF: () => void;
 }
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#AF19FF', '#FF1943', '#19D7FF'];
@@ -23,11 +24,58 @@ const CustomTooltip = ({ active, payload }: any) => {
   return null;
 };
 
-const Dashboard: React.FC<DashboardProps> = ({ summary, onCardClick }) => {
+const Dashboard: React.FC<DashboardProps> = ({ summary, onCardClick, onExportXLSX, onExportPDF }) => {
   const chartData = summary.debitSummary.map(item => ({ name: item.category, value: item.totalAmount }));
+  const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
+  const exportMenuRef = useRef<HTMLDivElement>(null);
+  
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(event.target as Node)) {
+        setIsExportMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  const ExportMenuItem: React.FC<{ onClick: () => void; children: React.ReactNode }> = ({ onClick, children }) => (
+      <button
+        onClick={() => { onClick(); setIsExportMenuOpen(false); }}
+        className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-600 flex items-center space-x-3"
+        role="menuitem"
+      >
+        {children}
+      </button>
+  );
 
   return (
     <div className="space-y-8 animate-fade-in">
+      <div className="flex flex-wrap justify-between items-center gap-4 mb-6">
+        <h2 className="text-2xl font-bold text-gray-800 dark:text-white">BBaala Expense Analyser Dashboard</h2>
+        <div className="relative" ref={exportMenuRef}>
+            <button
+                onClick={() => setIsExportMenuOpen(prev => !prev)}
+                className="flex items-center space-x-2 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors shadow-sm"
+                aria-label="Export report options"
+            >
+                <ExportIcon className="w-5 h-5" />
+                <span>Export Report</span>
+                <ChevronDownIcon className="w-4 h-4"/>
+            </button>
+            {isExportMenuOpen && (
+                <div className="absolute right-0 mt-2 w-56 origin-top-right bg-white dark:bg-gray-700 rounded-md shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none z-10" role="menu" aria-orientation="vertical">
+                    <div className="py-1">
+                        <ExportMenuItem onClick={onExportXLSX}><span>Export as Excel (.xlsx)</span></ExportMenuItem>
+                        <ExportMenuItem onClick={onExportPDF}><span>Export as PDF</span></ExportMenuItem>
+                    </div>
+                </div>
+            )}
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <SummaryCard
           title="Total Credit"
