@@ -1,5 +1,7 @@
 {
   "name": "Gemini Expense Analyzer",
   "description": "An intelligent expense calculator that analyzes bank statements from PDF files. Upload a PDF to instantly see a breakdown of credits, debits, and a summarized dashboard of your spending habits.",
-  "requestFramePermissions": []
+  "requestFramePermissions": [
+    "camera"
+  ]
 }

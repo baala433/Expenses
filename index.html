@@ -38,6 +38,34 @@
     transform: translate3d(0, 0, 0);
   }
 }
+/* NEW: Animations for transaction updates and deletions */
+@keyframes flash-bg-light {
+  50% { background-color: rgba(59, 130, 246, 0.1); }
+}
+@keyframes flash-bg-dark {
+  50% { background-color: rgba(96, 165, 250, 0.2); }
+}
+.animate-flash {
+  animation: flash-bg-light 1s ease-out;
+}
+.dark .animate-flash {
+  animation: flash-bg-dark 1s ease-out;
+}
+
+@keyframes slide-out {
+  to {
+    transform: translateX(-100%);
+    opacity: 0;
+    margin-bottom: -5.5rem; /* Approximate height of an item to avoid jump */
+    padding-top: 0;
+    padding-bottom: 0;
+    border: 0;
+  }
+}
+.animate-slide-out {
+  animation: slide-out 0.5s ease-in-out forwards;
+}
+
 .animate-fade-in {
   animation: fadeIn 0.5s ease-out forwards;
 }

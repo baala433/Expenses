@@ -1,10 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import SummaryCard from './SummaryCard';
-import { CreditIcon, DebitIcon, ExportIcon, ChevronDownIcon, SparkleIcon } from './Icons';
+import { CreditIcon, DebitIcon, ExportIcon, ChevronDownIcon, SparkleIcon, CameraIcon, ManageCategoriesIcon } from './Icons';
 import { generateQuickSummary, generateCategorySummary } from '../services/geminiService';
-
-const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#AF19FF', '#FF1943', '#19D7FF'];
 
 const CustomTooltip = ({ active, payload }: any) => {
   if (active && payload && payload.length) {
@@ -17,7 +15,6 @@ const CustomTooltip = ({ active, payload }: any) => {
   return null;
 };
 
-// Moved ExportMenuItem outside Dashboard component and made it reusable
 const ExportMenuItem = ({ onClick, closeMenu, children }: { onClick: () => void, closeMenu: () => void, children: React.ReactNode }) => (
   <button
     onClick={() => {
@@ -32,8 +29,14 @@ const ExportMenuItem = ({ onClick, closeMenu, children }: { onClick: () => void,
 );
 
 
-const Dashboard = ({ summary, onCardClick, onExportXLSX, onExportPDF, onExportBreakdownXLSX, onExportBreakdownPDF }: any) => {
-  const chartData = summary.debitSummary.map((item: any) => ({ name: item.category, value: item.totalAmount }));
+const Dashboard = ({ summary, categories, onCardClick, onExportXLSX, onExportPDF, onExportBreakdownXLSX, onExportBreakdownPDF, onOpenScanner, onOpenCategoryManager }: any) => {
+  const categoryColorMap = new Map(categories.map((cat: any) => [cat.name, cat.color]));
+  const chartData = summary.debitSummary.map((item: any) => ({ 
+      name: item.category, 
+      value: item.totalAmount,
+      fill: categoryColorMap.get(item.category) || '#8884d8'
+  }));
+
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
   const exportMenuRef = useRef<HTMLDivElement>(null);
   const [isBreakdownExportMenuOpen, setIsBreakdownExportMenuOpen] = useState(false);
@@ -92,7 +95,8 @@ const Dashboard = ({ summary, onCardClick, onExportXLSX, onExportPDF, onExportBr
       const result = await generateCategorySummary(categoryName, categoryTransactions);
       setCategorySummary({ category: categoryName, text: result, isLoading: false, error: null });
     } catch (err: any) {
-      setCategorySummary({ category: categoryName, text: '', isLoading: false, error: err.message || `Failed to generate summary for ${categoryName}.` });
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      setCategorySummary({ category: categoryName, text: '', isLoading: false, error: errorMessage || `Failed to generate summary for ${categoryName}.` });
     }
   };
 
@@ -129,28 +133,46 @@ const Dashboard = ({ summary, onCardClick, onExportXLSX, onExportPDF, onExportBr
     <div className="space-y-8 animate-fade-in">
       <div className="flex flex-wrap justify-between items-center gap-4 mb-6">
         <h2 className="text-2xl font-bold text-gray-800 dark:text-white">BBaala Expense Analyser Dashboard</h2>
-        <div className="relative" ref={exportMenuRef}>
-            <button
-                onClick={() => setIsExportMenuOpen(prev => !prev)}
-                className="flex items-center space-x-2 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors shadow-sm"
-                aria-label="Export report options"
-            >
-                <ExportIcon className="w-5 h-5" />
-                <span>Export Report</span>
-                <ChevronDownIcon className="w-4 h-4"/>
-            </button>
-            {isExportMenuOpen && (
-                <div className="absolute right-0 mt-2 w-56 origin-top-right bg-white dark:bg-gray-700 rounded-md shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none z-10" role="menu" aria-orientation="vertical">
-                    <div className="py-1">
-                        <ExportMenuItem onClick={onExportXLSX} closeMenu={() => setIsExportMenuOpen(false)}>
-                            <span>Export as Excel (.xlsx)</span>
-                        </ExportMenuItem>
-                        <ExportMenuItem onClick={onExportPDF} closeMenu={() => setIsExportMenuOpen(false)}>
-                            <span>Export as PDF</span>
-                        </ExportMenuItem>
-                    </div>
-                </div>
-            )}
+        <div className="flex items-center flex-wrap gap-2">
+          <button
+              onClick={onOpenScanner}
+              className="flex items-center space-x-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors shadow-sm"
+              aria-label="Scan a new receipt"
+          >
+              <CameraIcon className="w-5 h-5" />
+              <span>Scan Receipt</span>
+          </button>
+           <button
+              onClick={onOpenCategoryManager}
+              className="flex items-center space-x-2 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors shadow-sm"
+              aria-label="Manage expense categories"
+          >
+              <ManageCategoriesIcon className="w-5 h-5" />
+              <span>Manage Categories</span>
+          </button>
+          <div className="relative" ref={exportMenuRef}>
+              <button
+                  onClick={() => setIsExportMenuOpen(prev => !prev)}
+                  className="flex items-center space-x-2 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors shadow-sm"
+                  aria-label="Export report options"
+              >
+                  <ExportIcon className="w-5 h-5" />
+                  <span>Export Report</span>
+                  <ChevronDownIcon className="w-4 h-4"/>
+              </button>
+              {isExportMenuOpen && (
+                  <div className="absolute right-0 mt-2 w-56 origin-top-right bg-white dark:bg-gray-700 rounded-md shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none z-10" role="menu" aria-orientation="vertical">
+                      <div className="py-1">
+                          <ExportMenuItem onClick={onExportXLSX} closeMenu={() => setIsExportMenuOpen(false)}>
+                              <span>Export as Excel (.xlsx)</span>
+                          </ExportMenuItem>
+                          <ExportMenuItem onClick={onExportPDF} closeMenu={() => setIsExportMenuOpen(false)}>
+                              <span>Export as PDF</span>
+                          </ExportMenuItem>
+                      </div>
+                  </div>
+              )}
+          </div>
         </div>
       </div>
 
@@ -251,23 +273,23 @@ const Dashboard = ({ summary, onCardClick, onExportXLSX, onExportPDF, onExportBr
                         nameKey="name"
                     >
                         {chartData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                          <Cell key={`cell-${index}`} fill={entry.fill} />
                         ))}
                     </Pie>
-                    {/* FIX: Pass the component function directly, not a JSX element instance. */}
                     <Tooltip content={CustomTooltip} />
                     <Legend />
                     </PieChart>
                 </ResponsiveContainer>
             </div>
             <div className="space-y-3">
-              {summary.debitSummary.sort((a: any,b: any) => b.totalAmount - a.totalAmount).map((item: any, index: number) => {
+              {summary.debitSummary.sort((a: any,b: any) => b.totalAmount - a.totalAmount).map((item: any) => {
                 const isCurrentCategory = categorySummary.category === item.category;
                 return (
                 <div key={item.category} className="transition-all duration-300">
                   <div className="flex justify-between items-center p-3 rounded-lg bg-gray-50 dark:bg-gray-700/50">
                       <div className="flex items-center space-x-3 flex-1">
-                          <span className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS[index % COLORS.length] }}></span>
+                          {/* FIX: Cast style property to string to resolve TypeScript error. */}
+                          <span className="w-3 h-3 rounded-full" style={{ backgroundColor: (categoryColorMap.get(item.category) || '#8884d8') as string }}></span>
                           <p className="font-medium text-gray-700 dark:text-gray-200">{item.category}</p>
                       </div>
                       <div className="flex items-center space-x-2">

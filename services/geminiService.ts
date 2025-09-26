@@ -38,7 +38,7 @@ let chat = null;
 let financialChat = null;
 let currentSummary = null;
 
-export const analyzeExpensePdf = async (pdfFile: File) => {
+export const analyzeExpensePdf = async (pdfFile: File, categories: string[]) => {
   if (!process.env.API_KEY) {
     throw new ApiKeyError("API_KEY environment variable is not set. Please configure it before retrying.");
   }
@@ -53,7 +53,7 @@ export const analyzeExpensePdf = async (pdfFile: File) => {
   const prompt = `
     You are an expert financial analyst. Your task is to analyze the provided bank statement PDF.
     Extract all credit (income, deposits) and debit (expense, withdrawal) transactions. You must extract the date, description, and amount for each transaction. The date must be in YYYY-MM-DD format.
-    For each debit transaction, you must assign a category. Use one of the following categories: 'Food & Dining', 'Transportation', 'Shopping', 'Utilities', 'Entertainment', 'Housing', 'Health', 'Other'.
+    For each debit transaction, you must assign a category. Use one of the following categories: ${categories.join(', ')}.
     Calculate the total credit and total debit.
     Provide a summary of total spending per category.
     Return the result in the specified JSON format. Ensure all amounts are positive numbers.
@@ -135,6 +135,65 @@ export const analyzeExpensePdf = async (pdfFile: File) => {
   }
 };
 
+export const analyzeReceiptImage = async (base64Image: string, mimeType: string, categories: string[]) => {
+  if (!process.env.API_KEY) {
+    throw new ApiKeyError("API_KEY is not set.");
+  }
+  
+  const model = 'gemini-2.5-flash';
+  const imagePart = { inlineData: { data: base64Image, mimeType } };
+
+  const prompt = `
+    Analyze this receipt image. Extract the following information:
+    1.  **Merchant Name:** The name of the store or vendor.
+    2.  **Transaction Date:** The date of the purchase in YYYY-MM-DD format. If the year is not present, assume the current year.
+    3.  **Total Amount:** The final total amount paid.
+    4.  **Category:** Suggest the most appropriate category for this expense from the following list: ${categories.join(', ')}.
+
+    Return the result as a single, clean JSON object.
+  `;
+  
+  try {
+     const response = await ai.models.generateContent({
+      model: model,
+      contents: { parts: [imagePart, { text: prompt }] },
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            description: { type: Type.STRING, description: "The name of the merchant or vendor." },
+            date: { type: Type.STRING, description: "The transaction date in YYYY-MM-DD format." },
+            amount: { type: Type.NUMBER, description: "The total amount of the transaction." },
+            category: { type: Type.STRING, description: "The suggested expense category." },
+          },
+          required: ["description", "date", "amount", "category"],
+        },
+      },
+    });
+    
+    const jsonText = response.text.trim();
+    const parsedJson = JSON.parse(jsonText);
+    
+    // Validate date format, default to today if invalid
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(parsedJson.date)) {
+        parsedJson.date = new Date().toISOString().split('T')[0];
+    }
+    
+    // Ensure amount is a positive number
+    parsedJson.amount = Math.abs(parseFloat(parsedJson.amount) || 0);
+
+    return parsedJson;
+  } catch (error) {
+    console.error("Error analyzing receipt image:", error);
+     if (error instanceof Error && (error.message.includes('json') || error.message.includes('parse'))) {
+         throw new DocumentAnalysisError("The AI model couldn't understand this receipt. Please try a clearer picture.");
+    }
+    throw new NetworkError("Failed to analyze the receipt due to a network or API issue. Please check your connection and try again.");
+  }
+};
+
+
 export const generateQuickSummary = async (debitSummary: any[]) => {
   if (!process.env.API_KEY) {
     throw new Error("API_KEY environment variable is not set.");
@@ -215,7 +274,7 @@ const getChatSession = () => {
     throw new Error("API_KEY environment variable is not set.");
   }
 
-  const systemInstruction = `You are 'BBaala Assistant', a friendly and helpful guide for the 'BBaala Expense Analyser' web application. Your purpose is to answer user questions about how to use the website. The website allows users to upload a PDF bank statement. It then uses AI to analyze the statement and displays a dashboard with total credit, total debit, and a pie chart breakdown of expenses by category (like Food, Shopping, etc.). Users can view detailed transaction lists, edit categories and descriptions, and export all data to PDF or Excel formats. Keep your answers concise and focused on the website's features. When asked how to use the site, give a simple step-by-step guide.`;
+  const systemInstruction = `You are 'BBaala Assistant', a friendly and helpful guide for the 'BBaala Expense Analyser' web application. Your purpose is to answer user questions about how to use the website. The website allows users to upload a PDF bank statement. It then uses AI to analyze the statement and displays a dashboard with total credit, total debit, and a pie chart breakdown of expenses by category (like Food, Shopping, etc.). Users can view detailed transaction lists, edit categories and descriptions, export data, and scan receipts with their camera to add new expenses. Keep your answers concise and focused on the website's features. When asked how to use the site, give a simple step-by-step guide.`;
 
   chat = ai.chats.create({
     model: 'gemini-2.5-flash',
