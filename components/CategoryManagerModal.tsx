@@ -1,12 +1,32 @@
 import React, { useState } from 'react';
-import { EditIcon, TrashIcon } from './Icons';
+import { EditIcon, TrashIcon, categoryIcons } from './Icons';
+
+const IconPicker = ({ selectedIcon, onSelect }: { selectedIcon: string, onSelect: (iconName: string) => void }) => {
+    return (
+        <div className="grid grid-cols-8 gap-2 my-2">
+            {Object.entries(categoryIcons).map(([key, IconComponent]) => (
+                <button
+                    type="button"
+                    key={key}
+                    onClick={() => onSelect(key)}
+                    className={`p-2 rounded-lg flex justify-center items-center transition-all ${selectedIcon === key ? 'bg-blue-500 text-white ring-2 ring-offset-2 ring-blue-500 dark:ring-offset-gray-800' : 'bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300 hover:bg-blue-200 dark:hover:bg-blue-500'}`}
+                >
+                    <IconComponent className="w-5 h-5" />
+                </button>
+            ))}
+        </div>
+    );
+};
+
 
 const CategoryManagerModal = ({ isOpen, onClose, categories, onUpdateCategories, onCategoryNameChange, onCategoryDelete }) => {
   const [editingIndex, setEditingIndex] = useState(null);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [newCategoryColor, setNewCategoryColor] = useState('#563d7c');
+  const [newCategoryIcon, setNewCategoryIcon] = useState('other');
   const [editedName, setEditedName] = useState('');
   const [editedColor, setEditedColor] = useState('');
+  const [editedIcon, setEditedIcon] = useState('');
 
   if (!isOpen) return null;
 
@@ -14,10 +34,11 @@ const CategoryManagerModal = ({ isOpen, onClose, categories, onUpdateCategories,
     e.preventDefault();
     const trimmedName = newCategoryName.trim();
     if (trimmedName && !categories.some(cat => cat.name.toLowerCase() === trimmedName.toLowerCase())) {
-      const newCategories = [...categories, { name: trimmedName, color: newCategoryColor }];
+      const newCategories = [...categories, { name: trimmedName, color: newCategoryColor, icon: newCategoryIcon }];
       onUpdateCategories(newCategories);
       setNewCategoryName('');
       setNewCategoryColor('#563d7c');
+      setNewCategoryIcon('other');
     }
   };
 
@@ -25,21 +46,22 @@ const CategoryManagerModal = ({ isOpen, onClose, categories, onUpdateCategories,
     setEditingIndex(index);
     setEditedName(category.name);
     setEditedColor(category.color);
+    setEditedIcon(category.icon || 'other');
   };
   
   const handleUpdateCategory = (index) => {
       const originalCategory = categories[index];
       const trimmedName = editedName.trim();
       
-      if (trimmedName && (trimmedName !== originalCategory.name || editedColor !== originalCategory.color)) {
+      if (trimmedName && (trimmedName !== originalCategory.name || editedColor !== originalCategory.color || editedIcon !== originalCategory.icon)) {
           // Check for name conflict
-          if (trimmedName !== originalCategory.name && categories.some(cat => cat.name.toLowerCase() === trimmedName.toLowerCase())) {
+          if (trimmedName.toLowerCase() !== originalCategory.name.toLowerCase() && categories.some(cat => cat.name.toLowerCase() === trimmedName.toLowerCase())) {
               alert("A category with this name already exists.");
               return;
           }
           
           const newCategories = [...categories];
-          newCategories[index] = { name: trimmedName, color: editedColor };
+          newCategories[index] = { name: trimmedName, color: editedColor, icon: editedIcon };
           onUpdateCategories(newCategories);
           
           if(trimmedName !== originalCategory.name) {
@@ -73,17 +95,27 @@ const CategoryManagerModal = ({ isOpen, onClose, categories, onUpdateCategories,
 
         <div className="overflow-y-auto p-4 sm:p-6 space-y-4">
           {categories.map((category, index) => (
-            <div key={index} className="flex items-center space-x-3 p-2 rounded-lg bg-gray-50 dark:bg-gray-700/50">
+            <div key={index} className="p-2 rounded-lg bg-gray-50 dark:bg-gray-700/50">
               {editingIndex === index ? (
-                <>
-                  <input type="color" value={editedColor} onChange={(e) => setEditedColor(e.target.value)} className="p-0 border-none rounded-md cursor-pointer" style={{height: '2rem', width: '2.5rem', background: 'transparent'}} />
-                  <input type="text" value={editedName} onChange={(e) => setEditedName(e.target.value)} className="form-input flex-grow" autoFocus />
-                  <button onClick={() => handleUpdateCategory(index)} className="px-3 py-1 text-sm text-white bg-blue-600 rounded-md hover:bg-blue-700">Save</button>
-                  <button onClick={() => setEditingIndex(null)} className="px-3 py-1 text-sm text-gray-700 bg-gray-200 rounded-md hover:bg-gray-300">Cancel</button>
-                </>
+                <div className="space-y-3">
+                  <div className="flex items-center space-x-3">
+                    <input type="color" value={editedColor} onChange={(e) => setEditedColor(e.target.value)} className="p-0 border-none rounded-md cursor-pointer" style={{height: '2rem', width: '2.5rem', background: 'transparent'}} />
+                    <input type="text" value={editedName} onChange={(e) => setEditedName(e.target.value)} className="form-input flex-grow" autoFocus />
+                  </div>
+                  <IconPicker selectedIcon={editedIcon} onSelect={setEditedIcon} />
+                  <div className="flex justify-end space-x-2">
+                    <button onClick={() => setEditingIndex(null)} className="px-3 py-1 text-sm text-gray-700 bg-gray-200 rounded-md hover:bg-gray-300">Cancel</button>
+                    <button onClick={() => handleUpdateCategory(index)} className="px-3 py-1 text-sm text-white bg-blue-600 rounded-md hover:bg-blue-700">Save</button>
+                  </div>
+                </div>
               ) : (
-                <>
-                  <div className="w-8 h-8 rounded-md" style={{ backgroundColor: category.color }}></div>
+                <div className="flex items-center space-x-3">
+                  <div className="w-8 h-8 rounded-md flex items-center justify-center" style={{ backgroundColor: category.color }}>
+                      {(() => {
+                          const Icon = categoryIcons[category.icon || 'other'] || categoryIcons.other;
+                          return <Icon className="w-5 h-5 text-white" />;
+                      })()}
+                  </div>
                   <span className="flex-grow font-medium text-gray-800 dark:text-gray-200">{category.name}</span>
                   {category.name !== 'Other' && (
                     <>
@@ -95,24 +127,30 @@ const CategoryManagerModal = ({ isOpen, onClose, categories, onUpdateCategories,
                       </button>
                     </>
                   )}
-                </>
+                </div>
               )}
             </div>
           ))}
         </div>
 
         <footer className="p-4 sm:p-6 border-t border-gray-200 dark:border-gray-700">
-          <form onSubmit={handleAddCategory} className="flex items-center space-x-3">
-             <input type="color" value={newCategoryColor} onChange={(e) => setNewCategoryColor(e.target.value)} className="p-0 border-none rounded-md cursor-pointer" style={{height: '2.5rem', width: '3rem', background: 'transparent'}}/>
-             <input
-              type="text"
-              value={newCategoryName}
-              onChange={(e) => setNewCategoryName(e.target.value)}
-              placeholder="Add new category"
-              className="form-input flex-grow"
-              required
-            />
-            <button type="submit" className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700">Add</button>
+          <form onSubmit={handleAddCategory} className="space-y-3">
+             <div className="flex items-center space-x-3">
+                <input type="color" value={newCategoryColor} onChange={(e) => setNewCategoryColor(e.target.value)} className="p-0 border-none rounded-md cursor-pointer" style={{height: '2.5rem', width: '3rem', background: 'transparent'}}/>
+                <input
+                 type="text"
+                 value={newCategoryName}
+                 onChange={(e) => setNewCategoryName(e.target.value)}
+                 placeholder="Add new category"
+                 className="form-input flex-grow"
+                 required
+               />
+               <button type="submit" className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700">Add</button>
+             </div>
+             <div>
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block">Icon</label>
+                <IconPicker selectedIcon={newCategoryIcon} onSelect={setNewCategoryIcon} />
+             </div>
           </form>
         </footer>
       </div>

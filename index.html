@@ -5,6 +5,11 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>BBaala Expense Analyzer</title>
+    <script>
+      tailwind.config = {
+        darkMode: 'class'
+      }
+    </script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script type="text/javascript" src="https://unpkg.com/react/umd/react.production.min.js"></script>
     <script type="text/javascript" src="https://unpkg.com/react-dom/umd/react-dom.production.min.js"></script>
@@ -50,6 +55,30 @@
 }
 .dark .animate-flash {
   animation: flash-bg-dark 1s ease-out;
+}
+
+/* NEW: Animation for flashing an element's border */
+@keyframes flash-border-light {
+  50% { border-color: #3B82F6; } /* blue-500 */
+}
+@keyframes flash-border-dark {
+  50% { border-color: #60A5FA; } /* blue-400 */
+}
+.animate-flash-border {
+  animation: flash-border-light 1s ease-out;
+}
+.dark .animate-flash-border {
+  animation: flash-border-dark 1s ease-out;
+}
+
+/* NEW: Keyframes and class for the spinning logo animation. */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.animate-logo-spin {
+  animation: spin 10s linear infinite;
+  transform-origin: 50% 50%;
 }
 
 @keyframes slide-out {

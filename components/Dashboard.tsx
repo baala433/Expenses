@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import SummaryCard from './SummaryCard';
-import { CreditIcon, DebitIcon, ExportIcon, ChevronDownIcon, SparkleIcon, CameraIcon, ManageCategoriesIcon } from './Icons';
+import { CreditIcon, DebitIcon, ExportIcon, ChevronDownIcon, SparkleIcon, CameraIcon, ManageCategoriesIcon, categoryIcons } from './Icons';
 import { generateQuickSummary, generateCategorySummary } from '../services/geminiService';
 
 const CustomTooltip = ({ active, payload }: any) => {
@@ -284,12 +284,15 @@ const Dashboard = ({ summary, categories, onCardClick, onExportXLSX, onExportPDF
             <div className="space-y-3">
               {summary.debitSummary.sort((a: any,b: any) => b.totalAmount - a.totalAmount).map((item: any) => {
                 const isCurrentCategory = categorySummary.category === item.category;
+                const categoryDetails = categories.find((c: any) => c.name === item.category) || { icon: 'other', color: '#8884d8' };
+                const IconComponent = categoryIcons[categoryDetails.icon] || categoryIcons.other;
                 return (
                 <div key={item.category} className="transition-all duration-300">
                   <div className="flex justify-between items-center p-3 rounded-lg bg-gray-50 dark:bg-gray-700/50">
                       <div className="flex items-center space-x-3 flex-1">
-                          {/* FIX: Cast style property to string to resolve TypeScript error. */}
-                          <span className="w-3 h-3 rounded-full" style={{ backgroundColor: (categoryColorMap.get(item.category) || '#8884d8') as string }}></span>
+                          <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: categoryDetails.color }}>
+                              <IconComponent className="w-5 h-5 text-white" />
+                          </div>
                           <p className="font-medium text-gray-700 dark:text-gray-200">{item.category}</p>
                       </div>
                       <div className="flex items-center space-x-2">

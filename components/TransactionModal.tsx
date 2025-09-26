@@ -1,10 +1,12 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { EditIcon, SearchIcon, SortAscIcon, SortDescIcon, ExportIcon, ChevronDownIcon, CsvIcon, ExcelIcon, PdfIcon, TrashIcon } from './Icons';
+import { EditIcon, SearchIcon, SortAscIcon, SortDescIcon, ExportIcon, ChevronDownIcon, CsvIcon, ExcelIcon, PdfIcon, TrashIcon, categoryIcons } from './Icons';
 
-const TransactionModal = ({ isOpen, onClose, title, transactions, type, categories, onUpdateCategory, onUpdateDescription, onDeleteTransaction }: any) => {
+const TransactionModal = ({ isOpen, onClose, title, transactions, type, categories, onUpdateCategory, onUpdateDescription, onDeleteTransaction, onUpdateNotes }: any) => {
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editingDescription, setEditingDescription] = useState('');
+  const [editingNotesIndex, setEditingNotesIndex] = useState<number | null>(null);
+  const [editingNotes, setEditingNotes] = useState('');
   
   const [searchTerm, setSearchTerm] = useState('');
   const [startDate, setStartDate] = useState('');
@@ -14,10 +16,29 @@ const TransactionModal = ({ isOpen, onClose, title, transactions, type, categori
   const exportMenuRef = useRef<HTMLDivElement>(null);
 
   // State for animations and gestures
-  const [updatedInfo, setUpdatedInfo] = useState<{ index: number, type: 'category' | 'description'} | null>(null);
+  const [updatedInfo, setUpdatedInfo] = useState<{ index: number, type: 'category' | 'description' | 'notes'} | null>(null);
   const [swipedIndex, setSwipedIndex] = useState<number | null>(null);
   const [deletingIndex, setDeletingIndex] = useState<number | null>(null);
+  const [confirmingDeleteIndex, setConfirmingDeleteIndex] = useState<number | null>(null);
+  const [lastDeleted, setLastDeleted] = useState<{ transaction: any, originalIndex: number, type: 'credit' | 'debit' } | null>(null);
+  const undoTimeoutRef = useRef<number | null>(null);
   const listRef = useRef(null);
+  
+  const categoryDetailsMap = useMemo(() => new Map(categories.map((c: any) => [c.name, { icon: c.icon || 'other' }])), [categories]);
+  
+  const handleUndoDelete = () => {
+    if (undoTimeoutRef.current) {
+        clearTimeout(undoTimeoutRef.current);
+        undoTimeoutRef.current = null;
+    }
+    setLastDeleted(null);
+  };
+  
+  const handleClose = () => {
+      handleUndoDelete(); // Cancel any pending delete on close
+      onClose();
+  };
+
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -49,7 +70,16 @@ const TransactionModal = ({ isOpen, onClose, title, transactions, type, categori
       setSortConfig({ key: 'date', direction: 'desc' });
       setSwipedIndex(null);
       setEditingIndex(null);
+      setEditingNotesIndex(null);
       setDeletingIndex(null);
+      setConfirmingDeleteIndex(null);
+      setLastDeleted(null); // Clear any undo state when modal opens
+    } else {
+        // Cleanup on close
+        if (undoTimeoutRef.current) {
+            clearTimeout(undoTimeoutRef.current);
+            undoTimeoutRef.current = null;
+        }
     }
   }, [isOpen]);
 
@@ -61,7 +91,13 @@ const TransactionModal = ({ isOpen, onClose, title, transactions, type, categori
     setEditingDescription(description);
   };
   
-  const triggerUpdateAnimation = (index: number, type: 'category' | 'description') => {
+  const handleStartEditingNotes = (index: number, notes: string) => {
+    setSwipedIndex(null);
+    setEditingNotesIndex(index);
+    setEditingNotes(notes || '');
+  };
+
+  const triggerUpdateAnimation = (index: number, type: 'category' | 'description' | 'notes') => {
     setUpdatedInfo({ index, type });
     setTimeout(() => setUpdatedInfo(null), 1000); // Animation duration
   };
@@ -77,6 +113,17 @@ const TransactionModal = ({ isOpen, onClose, title, transactions, type, categori
     }
     setEditingIndex(null);
   };
+
+  const handleSaveNotes = (index: number) => {
+    if (index === null || !onUpdateNotes) return;
+
+    const originalTx = transactions[index];
+    if (originalTx?.notes !== editingNotes) {
+        onUpdateNotes(type, index, editingNotes);
+        triggerUpdateAnimation(index, 'notes');
+    }
+    setEditingNotesIndex(null);
+  };
   
   const handleCategoryChange = (index: number, newCategory: string) => {
     if (transactions[index]?.category !== newCategory) {
@@ -85,13 +132,42 @@ const TransactionModal = ({ isOpen, onClose, title, transactions, type, categori
     }
   };
   
-  const handleDelete = (index: number) => {
-    setDeletingIndex(index);
-    setTimeout(() => {
-        onDeleteTransaction(type, index);
-        setDeletingIndex(null);
-        setSwipedIndex(null);
-    }, 500); // match animation duration
+  const requestDelete = (index: number) => {
+    setConfirmingDeleteIndex(index);
+    setSwipedIndex(null); // Close the swipe view
+  };
+
+  const cancelDelete = () => {
+    setConfirmingDeleteIndex(null);
+  };
+
+  const executeDelete = (index: number) => {
+    setConfirmingDeleteIndex(null);
+
+    // Immediately commit any previously pending deletion
+    if (undoTimeoutRef.current) {
+        clearTimeout(undoTimeoutRef.current);
+    }
+    if (lastDeleted) {
+        onDeleteTransaction(lastDeleted.type, lastDeleted.originalIndex);
+    }
+
+    // Set up the new item for potential undo
+    const itemToDelete = {
+        transaction: transactions[index],
+        originalIndex: index,
+        type: type
+    };
+    setLastDeleted(itemToDelete);
+
+    // Start timer for permanent deletion
+    undoTimeoutRef.current = window.setTimeout(() => {
+        onDeleteTransaction(itemToDelete.type, itemToDelete.originalIndex);
+        setLastDeleted(current => 
+            (current && current.originalIndex === itemToDelete.originalIndex) ? null : current
+        );
+        undoTimeoutRef.current = null;
+    }, 5000); // 5 seconds
   };
   
   const amountColorClass = type === 'credit' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400';
@@ -105,9 +181,9 @@ const TransactionModal = ({ isOpen, onClose, title, transactions, type, categori
     let filtered = [...transactions];
     if (startDate) filtered = filtered.filter(tx => tx.date >= startDate);
     if (endDate) filtered = filtered.filter(tx => tx.date <= endDate);
-    if (type === 'debit') {
-      if (selectedCategory !== 'All') filtered = filtered.filter(tx => tx.category === selectedCategory);
-      if (searchTerm) filtered = filtered.filter(tx => tx.description.toLowerCase().includes(searchTerm.toLowerCase()));
+    if (searchTerm) filtered = filtered.filter(tx => tx.description.toLowerCase().includes(searchTerm.toLowerCase()) || (tx.notes && tx.notes.toLowerCase().includes(searchTerm.toLowerCase())));
+    if (type === 'debit' && selectedCategory !== 'All') {
+        filtered = filtered.filter(tx => tx.category === selectedCategory);
     }
     
     if (sortConfig.key) {
@@ -125,19 +201,166 @@ const TransactionModal = ({ isOpen, onClose, title, transactions, type, categori
   }, [transactions, selectedCategory, type, searchTerm, startDate, endDate, sortConfig]);
 
   const getFilename = (exportType: string, extension: string) => `${type}-${exportType}-${new Date().toISOString().split('T')[0]}.${extension}`;
-  const handleExportViewCSV = () => { /* ... unchanged ... */ };
-  const handleExportViewXLSX = () => { /* ... unchanged ... */ };
-  const addPdfWatermark = (doc: any) => { /* ... unchanged ... */ };
-  const handleExportViewPDF = () => { /* ... unchanged ... */ };
+  
+  const handleExportViewCSV = () => {
+    const headers = type === 'debit' ? "Date,Description,Category,Amount,Notes\n" : "Date,Description,Amount,Notes\n";
+    const rows = processedTransactions.map(tx => {
+        const description = `"${tx.description.replace(/"/g, '""')}"`;
+        const notes = `"${(tx.notes || '').replace(/"/g, '""')}"`;
+        const common = `${tx.date},${description}`;
+        return type === 'debit' ? `${common},${tx.category},${tx.amount},${notes}` : `${common},${tx.amount},${notes}`;
+    }).join("\n");
+    
+    const csvContent = "data:text/csv;charset=utf-8," + headers + rows;
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", getFilename('current-view', 'csv'));
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+  
+  const handleExportViewXLSX = () => {
+    const data = processedTransactions.map(tx => {
+        const row: any = { Date: tx.date, Description: tx.description };
+        if (type === 'debit') {
+            row.Category = tx.category;
+        }
+        row.Amount = tx.amount;
+        row.Notes = tx.notes || '';
+        return row;
+    });
+    const worksheet = XLSX.utils.json_to_sheet(data);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Transactions");
+    XLSX.writeFile(workbook, getFilename('current-view', 'xlsx'));
+  };
+
+  const addPdfWatermark = (doc: any) => {
+    const totalPages = doc.internal.getNumberOfPages();
+      for (let i = 1; i <= totalPages; i++) {
+        doc.setPage(i);
+        doc.setFontSize(50);
+        doc.setTextColor(150);
+        doc.saveGraphicsState();
+        doc.setGState(new (doc as any).GState({opacity: 0.1}));
+        doc.text("BBaala", doc.internal.pageSize.getWidth() / 2, doc.internal.pageSize.getHeight() / 2, { align: 'center', angle: 45 });
+        doc.restoreGraphicsState();
+      }
+  };
+  
+  const handleExportViewPDF = () => {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    const head = type === 'debit'
+        ? [['Date', 'Description', 'Category', 'Amount', 'Notes']]
+        : [['Date', 'Description', 'Amount', 'Notes']];
+    
+    const body = processedTransactions.map(tx => {
+        const row: (string | number)[] = [ tx.date, tx.description ];
+        if (type === 'debit') {
+            row.push((tx as any).category);
+        }
+        row.push(tx.amount.toFixed(2));
+        row.push((tx as any).notes || '');
+        return row;
+    });
+
+    doc.text(`${title} - Current View`, 14, 15);
+    (doc as any).autoTable({
+        head: head,
+        body: body,
+        startY: 25,
+        theme: 'grid',
+    });
+
+    addPdfWatermark(doc);
+    doc.save(getFilename('current-view', 'pdf'));
+  };
+
   const groupTransactionsByCategory = (txs: any[]) => txs.reduce((acc, tx) => {
       const category = tx.category || 'Uncategorized';
       if (!acc[category]) acc[category] = [];
       acc[category].push(tx);
       return acc;
   }, {} as { [key: string]: any[] });
-  const handleExportCategoryCSV = () => { /* ... unchanged ... */ };
-  const handleExportCategoryXLSX = () => { /* ... unchanged ... */ };
-  const handleExportCategoryPDF = () => { /* ... unchanged ... */ };
+
+  const handleExportCategoryCSV = () => {
+    if (type !== 'debit') return;
+    const grouped = groupTransactionsByCategory(processedTransactions);
+    let csvContent = "data:text/csv;charset=utf-8,Category,Date,Description,Amount,Notes\n";
+
+    for (const category in grouped) {
+        const rows = grouped[category].map(tx => 
+            `${category},${tx.date},"${tx.description.replace(/"/g, '""')}",${tx.amount},"${(tx.notes || '').replace(/"/g, '""')}"`
+        ).join("\n");
+        csvContent += rows + "\n";
+    }
+    
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", getFilename('by-category', 'csv'));
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+  
+  const handleExportCategoryXLSX = () => {
+    if (type !== 'debit') return;
+    const workbook = XLSX.utils.book_new();
+    const grouped = groupTransactionsByCategory(processedTransactions);
+
+    for (const category in grouped) {
+        const data = grouped[category].map(tx => ({
+            Date: tx.date,
+            Description: tx.description,
+            Amount: tx.amount,
+            Notes: tx.notes || ''
+        }));
+        const worksheet = XLSX.utils.json_to_sheet(data);
+        const sheetName = category.replace(/[\\/*?[\]]/g, '').substring(0, 31);
+        XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
+    }
+    
+    XLSX.writeFile(workbook, getFilename('by-category', 'xlsx'));
+  };
+
+  const handleExportCategoryPDF = () => {
+    if (type !== 'debit') return; 
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    doc.text(`${title} - Grouped by Category`, 14, 15);
+
+    const grouped = groupTransactionsByCategory(processedTransactions);
+    let startY = 25;
+
+    for (const category in grouped) {
+        if (Object.prototype.hasOwnProperty.call(grouped, category)) {
+            const transactions = grouped[category];
+            const body = transactions.map(tx => [tx.date, tx.description, tx.amount.toFixed(2), tx.notes || '']);
+            
+            const lastTable = (doc as any).autoTable.previous;
+            if (lastTable && lastTable.finalY) {
+                startY = lastTable.finalY + 15;
+            }
+
+            doc.setFontSize(12);
+            doc.text(category, 14, startY - 4);
+
+            (doc as any).autoTable({
+                head: [['Date', 'Description', 'Amount', 'Notes']],
+                body: body,
+                startY: startY,
+                theme: 'grid',
+            });
+        }
+    }
+
+    addPdfWatermark(doc);
+    doc.save(getFilename('by-category', 'pdf'));
+  };
 
   const handleSort = (key: string) => {
     setSortConfig(current => ({ key, direction: current.key === key && current.direction === 'asc' ? 'desc' : 'asc' }));
@@ -169,11 +392,10 @@ const TransactionModal = ({ isOpen, onClose, title, transactions, type, categori
   // Swipe Handlers
   const swipeStartPos = useRef(0);
   const swipeDelta = useRef(0);
-  // FIX: Changed ref type from HTMLLIElement to HTMLDivElement to match the element it's attached to.
   const swipedItemRef = useRef<HTMLDivElement | null>(null);
 
-  // FIX: Updated event types from HTMLLIElement to HTMLDivElement to match the event source.
   const handleSwipeStart = (e: React.TouchEvent<HTMLDivElement> | React.MouseEvent<HTMLDivElement>, index: number) => {
+    if (confirmingDeleteIndex !== null) return;
     setSwipedIndex(index);
     swipeStartPos.current = 'touches' in e ? e.touches[0].clientX : e.clientX;
     swipeDelta.current = 0;
@@ -181,7 +403,6 @@ const TransactionModal = ({ isOpen, onClose, title, transactions, type, categori
     swipedItemRef.current.style.transition = 'none';
   };
 
-  // FIX: Updated event types from HTMLLIElement to HTMLDivElement to match the event source.
   const handleSwipeMove = (e: React.TouchEvent<HTMLDivElement> | React.MouseEvent<HTMLDivElement>) => {
     if (swipedIndex === null || !swipedItemRef.current) return;
     const currentX = 'touches' in e ? e.touches[0].clientX : e.clientX;
@@ -204,7 +425,7 @@ const TransactionModal = ({ isOpen, onClose, title, transactions, type, categori
 
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex justify-center items-center p-4" onClick={onClose}>
+    <div className="fixed inset-0 bg-black bg-opacity-60 z-50 flex justify-center items-center p-4" onClick={handleClose}>
       <div 
         className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col m-4 animate-fade-in-up" 
         onClick={(e) => e.stopPropagation()}
@@ -213,7 +434,7 @@ const TransactionModal = ({ isOpen, onClose, title, transactions, type, categori
           <h2 className="text-xl sm:text-2xl font-bold text-gray-800 dark:text-white whitespace-nowrap">{title}</h2>
           <div className="flex items-center gap-4">
              {/* ... Export Menu ... */}
-             <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition">
+             <button onClick={handleClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition">
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
              </button>
           </div>
@@ -228,17 +449,36 @@ const TransactionModal = ({ isOpen, onClose, title, transactions, type, categori
             {processedTransactions.length > 0 ? (
               processedTransactions.map((tx, index) => {
                 const originalIndex = transactions.findIndex((originalTx: any) => originalTx === tx);
-                const isDebit = type === 'debit' && 'category' in tx;
-                const isEditing = isDebit && editingIndex === originalIndex;
+                const isDebit = type === 'debit';
+                const isEditingDesc = editingIndex === originalIndex;
+                const isEditingNotes = editingNotesIndex === originalIndex;
+                const isPendingDelete = lastDeleted?.originalIndex === originalIndex;
+                
+                const isConfirmingDelete = confirmingDeleteIndex === originalIndex;
                 
                 const rowClass = index % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50 dark:bg-gray-700/50';
-                const flashClass = updatedInfo?.index === originalIndex ? 'animate-flash' : '';
                 const deleteClass = deletingIndex === originalIndex ? 'animate-slide-out' : '';
+                const descriptionFlashClass = (updatedInfo?.index === originalIndex && updatedInfo?.type === 'description') ? 'animate-flash' : '';
+                const notesFlashClass = (updatedInfo?.index === originalIndex && updatedInfo?.type === 'notes') ? 'animate-flash' : '';
+                const categoryFlashClass = (updatedInfo?.index === originalIndex && updatedInfo?.type === 'category') ? 'animate-flash-border' : '';
+                
+                const categoryDetails = isDebit ? categoryDetailsMap.get(tx.category) : null;
+                const IconComponent = categoryDetails ? categoryIcons[(categoryDetails as { icon: string }).icon] || categoryIcons.other : null;
 
                 return (
-                  <li key={originalIndex} className={`relative overflow-hidden transition-all duration-500 ${deleteClass}`}>
+                  <li key={originalIndex} className={`relative overflow-hidden transition-all duration-300 ${deleteClass} ${isPendingDelete ? 'is-hiding' : ''}`}>
+                    {isConfirmingDelete ? (
+                       <div className={`${rowClass} flex flex-col sm:flex-row items-center justify-center text-center sm:text-left p-4 min-h-[5.5rem] border-b border-gray-200 dark:border-gray-600`}>
+                            <p className="font-semibold text-gray-700 dark:text-gray-200 sm:mr-4 mb-3 sm:mb-0">Are you sure you want to delete this transaction?</p>
+                            <div className="flex gap-2 flex-shrink-0">
+                                <button onClick={cancelDelete} className="px-4 py-1 text-sm font-medium text-gray-700 bg-gray-200 rounded-md hover:bg-gray-300">Cancel</button>
+                                <button onClick={() => executeDelete(originalIndex)} className="px-4 py-1 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700">Confirm</button>
+                            </div>
+                        </div>
+                    ) : (
+                    <>
                     <div className="absolute inset-y-0 right-0 w-20 bg-red-500 flex items-center justify-center">
-                       <button onClick={() => handleDelete(originalIndex)} className="text-white p-2 rounded-full hover:bg-red-600 transition-colors">
+                       <button onClick={() => requestDelete(originalIndex)} className="text-white p-2 rounded-full hover:bg-red-600 transition-colors">
                             <TrashIcon className="w-6 h-6" />
                        </button>
                     </div>
@@ -250,31 +490,34 @@ const TransactionModal = ({ isOpen, onClose, title, transactions, type, categori
                       onMouseMove={handleSwipeMove}
                       onMouseUp={handleSwipeEnd}
                       onMouseLeave={handleSwipeEnd}
-                      className={`${rowClass} ${flashClass} flex flex-col sm:flex-row justify-between items-start sm:items-center p-4 hover:bg-blue-50 dark:hover:bg-gray-700 transition-colors group border-b border-gray-200 dark:border-gray-600 relative z-10 cursor-grab`}
+                      className={`${rowClass} flex flex-col sm:flex-row justify-between items-start sm:items-center p-4 hover:bg-blue-50 dark:hover:bg-gray-700 transition-colors group border-b border-gray-200 dark:border-gray-600 relative z-10 cursor-grab`}
                     >
-                        <div className="flex-1 pr-4 w-full mb-2 sm:mb-0">
-                          <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">{tx.date}</div>
-                          {isEditing ? (
-                            <input
-                              type="text"
-                              value={editingDescription}
-                              onChange={(e) => setEditingDescription(e.target.value)}
-                              onBlur={() => handleSaveDescription(originalIndex)}
-                              onKeyDown={(e) => { if (e.key === 'Enter') handleSaveDescription(originalIndex); if (e.key === 'Escape') setEditingIndex(null); }}
-                              className="bg-white dark:bg-gray-600 border border-blue-400 dark:border-blue-500 text-gray-900 dark:text-gray-200 text-sm rounded-md focus:ring-blue-500 focus:border-blue-500 block w-full p-1"
-                              autoFocus
-                              onClick={(e) => e.stopPropagation()}
-                            />
-                          ) : (
-                            <div className="flex items-center">
-                              <span className="text-gray-700 dark:text-gray-300 text-sm flex-1">{tx.description}</span>
-                              {isDebit && onUpdateDescription && (
-                                <button onClick={(e) => { e.stopPropagation(); handleStartEditing(originalIndex, tx.description); }} className="ml-2 p-1 rounded-md opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity text-gray-500 hover:text-blue-600 dark:hover:text-blue-400" aria-label={`Edit description for ${tx.description}`}>
-                                  <EditIcon className="w-4 h-4" />
-                                </button>
-                              )}
-                            </div>
-                          )}
+                        <div className="flex-1 pr-4 w-full mb-2 sm:mb-0 space-y-1">
+                          <div className="text-xs text-gray-500 dark:text-gray-400">{tx.date}</div>
+                           {isEditingDesc ? (
+                                <input type="text" value={editingDescription} onChange={(e) => setEditingDescription(e.target.value)} onBlur={() => handleSaveDescription(originalIndex)} onKeyDown={(e) => { if (e.key === 'Enter') handleSaveDescription(originalIndex); if (e.key === 'Escape') setEditingIndex(null); }} className="form-input-sm" autoFocus onClick={(e) => e.stopPropagation()}/>
+                            ) : (
+                                <div className={`flex items-start ${descriptionFlashClass} rounded px-1`}>
+                                    {IconComponent && <IconComponent className="w-4 h-4 mr-2 mt-0.5 text-gray-500 dark:text-gray-400 flex-shrink-0" />}
+                                    <span className="text-gray-700 dark:text-gray-300 text-sm flex-1">{tx.description}</span>
+                                    {onUpdateDescription && (
+                                        <button onClick={(e) => { e.stopPropagation(); handleStartEditing(originalIndex, tx.description); }} className="ml-2 p-1 rounded-md opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity text-gray-500 hover:text-blue-600 dark:hover:text-blue-400" aria-label={`Edit description for ${tx.description}`}>
+                                        <EditIcon className="w-4 h-4" />
+                                        </button>
+                                    )}
+                                </div>
+                            )}
+
+                             {isEditingNotes ? (
+                                <textarea value={editingNotes} onChange={(e) => setEditingNotes(e.target.value)} onBlur={() => handleSaveNotes(originalIndex)} className="form-input-sm w-full" autoFocus onClick={(e) => e.stopPropagation()} placeholder="Add a note..."/>
+                            ) : (
+                                <div className={`flex items-start pl-1 pr-1 py-0.5 rounded ${notesFlashClass}`}>
+                                    <p className="text-xs text-gray-500 dark:text-gray-400 flex-1 italic whitespace-pre-wrap">{tx.notes || 'No notes'}</p>
+                                    <button onClick={(e) => { e.stopPropagation(); handleStartEditingNotes(originalIndex, tx.notes); }} className="ml-2 p-1 rounded-md opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity text-gray-500 hover:text-blue-600 dark:hover:text-blue-400" aria-label={`Edit notes for ${tx.description}`}>
+                                        <EditIcon className="w-3 h-3" />
+                                    </button>
+                                </div>
+                            )}
                         </div>
                         <div className="flex items-center space-x-4 w-full sm:w-auto justify-end">
                           {isDebit && (
@@ -283,7 +526,7 @@ const TransactionModal = ({ isOpen, onClose, title, transactions, type, categori
                                 value={tx.category}
                                 onChange={(e) => handleCategoryChange(originalIndex, e.target.value)}
                                 onClick={(e) => e.stopPropagation()}
-                                className="control-input p-2 w-full"
+                                className={`control-input p-2 w-full ${categoryFlashClass}`}
                                 aria-label={`Category for ${tx.description}`}
                               >
                                 {uniqueCategories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
@@ -295,6 +538,8 @@ const TransactionModal = ({ isOpen, onClose, title, transactions, type, categori
                           </span>
                         </div>
                     </div>
+                    </>
+                    )}
                   </li>
                 )
               })
@@ -303,8 +548,27 @@ const TransactionModal = ({ isOpen, onClose, title, transactions, type, categori
             )}
           </ul>
         </div>
+
+        {lastDeleted && (
+            <div className="p-3 bg-gray-700 dark:bg-gray-900 text-white flex justify-between items-center animate-fade-in-up border-t border-gray-600 dark:border-gray-700">
+                <span className="text-sm">Transaction deleted.</span>
+                <button onClick={handleUndoDelete} className="font-semibold uppercase text-sm text-blue-400 hover:text-blue-300 tracking-wider">Undo</button>
+            </div>
+        )}
       </div>
-       <style>{`.control-input { @apply bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-500 text-gray-900 dark:text-gray-200 text-sm rounded-md focus:ring-blue-500 focus:border-blue-500 block w-full p-2; }`}</style>
+       <style>{`
+        .control-input { @apply bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-500 text-gray-900 dark:text-gray-200 text-sm rounded-md focus:ring-blue-500 focus:border-blue-500 block w-full p-2; }
+        .form-input-sm { @apply bg-white dark:bg-gray-600 border border-blue-400 dark:border-blue-500 text-gray-900 dark:text-gray-200 text-sm rounded-md focus:ring-blue-500 focus:border-blue-500 block w-full p-1; }
+        .is-hiding {
+            max-height: 0;
+            opacity: 0;
+            transform: scaleY(0);
+            padding-top: 0;
+            padding-bottom: 0;
+            border-width: 0;
+            margin-bottom: -1px; /* Overlap border */
+        }
+        `}</style>
     </div>
   );
 };
